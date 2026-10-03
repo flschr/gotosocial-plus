@@ -19,6 +19,7 @@ package bundb_test
 
 import (
 	"testing"
+	"time"
 
 	"code.superseriousbusiness.org/gotosocial/internal/ap"
 	"code.superseriousbusiness.org/gotosocial/internal/db"
@@ -229,6 +230,69 @@ func (suite *StatusTestSuite) TestPutPopulatedStatus() {
 		"new note for this test",
 		dbStatus.Account.Note,
 	)
+}
+
+func (suite *StatusTestSuite) TestPutStatusUpdatesLastStatusAt() {
+	ctx := suite.T().Context()
+	account := suite.testAccounts["local_account_1"]
+
+	// Generate stats, then clear last_status_at
+	// to mimic stats created before any posts.
+	if err := suite.db.PopulateAccountStats(ctx, account); err != nil {
+		suite.FailNow(err.Error())
+	}
+	stats := account.Stats
+	stats.LastStatusAt = time.Time{}
+	if err := suite.db.UpdateAccountStats(ctx, stats, "last_status_at"); err != nil {
+		suite.FailNow(err.Error())
+	}
+
+	// Insert a new status from this account.
+	createdAt := time.Now().Truncate(time.Second)
+	statusID := id.NewULID()
+	status := &gtsmodel.Status{
+		ID:                  statusID,
+		URI:                 account.URI + "/statuses/" + statusID,
+		CreatedAt:           createdAt,
+		AccountID:           account.ID,
+		AccountURI:          account.URI,
+		Flags:               gtsmodel.StatusFlags(gtsmodel.StatusFlagLocal | gtsmodel.StatusFlagFederated),
+		ActivityStreamsType: ap.ObjectNote,
+	}
+	if err := suite.db.PutStatus(ctx, status); err != nil {
+		suite.FailNow(err.Error())
+	}
+
+	// Stats are still fresh so they won't be
+	// regenerated; last_status_at must have been
+	// set by the status insert itself.
+	account.Stats = nil
+	if err := suite.db.PopulateAccountStats(ctx, account); err != nil {
+		suite.FailNow(err.Error())
+	}
+	suite.True(account.Stats.LastStatusAt.Equal(createdAt),
+		"last_status_at = %v, want %v", account.Stats.LastStatusAt, createdAt)
+
+	// An older status must not move last_status_at backwards.
+	olderID := id.NewULID()
+	older := &gtsmodel.Status{
+		ID:                  olderID,
+		URI:                 account.URI + "/statuses/" + olderID,
+		CreatedAt:           createdAt.Add(-time.Hour),
+		AccountID:           account.ID,
+		AccountURI:          account.URI,
+		Flags:               gtsmodel.StatusFlags(gtsmodel.StatusFlagLocal | gtsmodel.StatusFlagFederated),
+		ActivityStreamsType: ap.ObjectNote,
+	}
+	if err := suite.db.PutStatus(ctx, older); err != nil {
+		suite.FailNow(err.Error())
+	}
+	account.Stats = nil
+	if err := suite.db.PopulateAccountStats(ctx, account); err != nil {
+		suite.FailNow(err.Error())
+	}
+	suite.True(account.Stats.LastStatusAt.Equal(createdAt),
+		"last_status_at = %v, want %v", account.Stats.LastStatusAt, createdAt)
 }
 
 func (suite *StatusTestSuite) TestPutStatusThreadingBoostOfIDSet() {

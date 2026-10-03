@@ -4,6 +4,24 @@ This changelog summarizes user-visible product features. Individual fixes,
 visual refinements, and internal implementation changes remain available in
 the Git history without becoming separate changelog entries.
 
+## v0.22.1-plus.8 — 2026-10-03
+
+### RSS feed updates reliably after new posts
+
+- Record the time of an account's latest post whenever a new post is stored,
+  instead of only during the periodic statistics refresh. Accounts whose
+  statistics were created before their first post previously kept an empty
+  "last post" time, so the profile RSS feed stayed cached and stopped showing
+  new posts until the statistics were regenerated
+  ([upstream #4664](https://codeberg.org/superseriousbusiness/gotosocial/issues/4664)).
+
+### Upgrade notes
+
+- This release remains based on GoToSocial 0.22.1.
+- No database migration. An already empty "last post" time is filled in by
+  the next new post or the next statistics refresh.
+- Deploy the binary, web assets, and templates from the same release archive.
+
 ## v0.22.1-plus.7 — 2026-09-08
 
 ### Durable Bluesky app-password connection
