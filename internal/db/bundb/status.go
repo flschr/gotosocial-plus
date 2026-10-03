@@ -581,10 +581,36 @@ func insertStatus(ctx context.Context, tx bun.Tx, status *gtsmodel.Status) error
 	}
 
 	// Increment status author statistics.
-	return incrementAccountStats(ctx, tx,
+	if err := incrementAccountStats(ctx, tx,
 		"statuses_count",
 		status.AccountID,
-	)
+	); err != nil {
+		return err
+	}
+
+	// Pending or deleted statuses are not counted
+	// towards last_status_at, matching the logic
+	// used when regenerating account stats.
+	if status.Flags.PendingApproval() || status.Flags.Deleted() {
+		return nil
+	}
+
+	// Bump last_status_at if this status is newer, so it
+	// doesn't stay NULL / stale until stats are regenerated.
+	if _, err := tx.NewUpdate().
+		Model((*gtsmodel.AccountStats)(nil)).
+		Set("? = ?", bun.Ident("last_status_at"), status.CreatedAt).
+		Where("? = ?", bun.Ident("account_id"), status.AccountID).
+		WhereGroup(" AND ", func(q *bun.UpdateQuery) *bun.UpdateQuery {
+			return q.
+				Where("? IS NULL", bun.Ident("last_status_at")).
+				WhereOr("? < ?", bun.Ident("last_status_at"), status.CreatedAt)
+		}).
+		Exec(ctx); err != nil {
+		return gtserror.Newf("error updating last_status_at: %w", err)
+	}
+
+	return nil
 }
 
 func (s *statusDB) UpdateStatus(ctx context.Context, status *gtsmodel.Status, columns ...string) error {
