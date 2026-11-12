@@ -224,6 +224,7 @@
 			justify-self: end;
 			min-width: 10rem;
 			display: flex;
+			justify-content: flex-end;
 			gap: 0.5rem;
 			align-items: flex-start;
 
