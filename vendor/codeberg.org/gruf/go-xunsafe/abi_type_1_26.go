@@ -1,4 +1,4 @@
-//go:build go1.26 && !go1.27
+//go:build go1.26 && !go1.28
 
 package xunsafe
 

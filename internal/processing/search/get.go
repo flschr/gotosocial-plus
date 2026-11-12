@@ -23,7 +23,9 @@ import (
 	"fmt"
 	"net/mail"
 	"net/url"
+	"sort"
 	"strings"
+	"time"
 
 	"code.superseriousbusiness.org/gopkg/log"
 	apimodel "code.superseriousbusiness.org/gotosocial/internal/api/model"
@@ -855,21 +857,51 @@ func (p *Processor) statusesByText(
 		fromAccountID = parsed.fromAccountID
 	}
 
-	statuses, err := p.state.DB.SearchForStatuses(
-		ctx,
-		requestingAccountID,
-		query,
-		fromAccountID,
-		maxID,
-		minID,
-		limit,
-		offset,
-	)
-	if err != nil && !errors.Is(err, db.ErrNoEntries) {
-		return gtserror.Newf("error checking database for statuses using text %s: %w", query, err)
+	// The API limit applies to visible results, not raw database candidates.
+	// Indexed exclusions in the DB cover common cases; this loop uses the
+	// canonical visibility policy for domain blocks and other remaining rules.
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	requester, err := p.state.DB.GetAccountByID(ctx, requestingAccountID)
+	if err != nil {
+		return err
 	}
-
-	for _, status := range statuses {
+	visibleStatuses := make([]*gtsmodel.Status, 0, limit)
+	pageUp := minID != ""
+	for len(visibleStatuses) < limit {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		batchLimit := limit - len(visibleStatuses)
+		statuses, err := p.state.DB.SearchForStatuses(ctx, requestingAccountID,
+			query, fromAccountID, maxID, minID, batchLimit, offset)
+		if err != nil && !errors.Is(err, db.ErrNoEntries) {
+			return gtserror.Newf("error checking database for statuses using text %s: %w", query, err)
+		}
+		if len(statuses) == 0 {
+			break
+		}
+		for _, status := range statuses {
+			visible, err := p.visFilter.StatusVisible(ctx, requester, status)
+			if err != nil {
+				return err
+			}
+			if visible {
+				visibleStatuses = append(visibleStatuses, status)
+			}
+		}
+		if len(statuses) < batchLimit {
+			break
+		}
+		if pageUp {
+			minID = statuses[0].ID
+		} else {
+			maxID = statuses[len(statuses)-1].ID
+		}
+	}
+	// Each upward DB batch is reversed independently. Restore overall API order.
+	sort.Slice(visibleStatuses, func(i, j int) bool { return visibleStatuses[i].ID > visibleStatuses[j].ID })
+	for _, status := range visibleStatuses {
 		appendStatus(status)
 	}
 

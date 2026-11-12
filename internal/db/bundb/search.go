@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"code.superseriousbusiness.org/gopkg/log"
+	"code.superseriousbusiness.org/gotosocial/internal/db"
 	"code.superseriousbusiness.org/gotosocial/internal/gtsmodel"
 	"code.superseriousbusiness.org/gotosocial/internal/id"
 	"code.superseriousbusiness.org/gotosocial/internal/state"
@@ -260,7 +261,7 @@ func (s *searchDB) accountText(following bool) *bun.SelectQuery {
 //	SELECT "status"."id"
 //	FROM "statuses" AS "status"
 //	WHERE ("status"."boost_of_id" IS NULL)
-//	AND (("status"."account_id" = '01F8MH1H7YV1Z7D2C8K2730QBF') OR ("status"."in_reply_to_account_id" = '01F8MH1H7YV1Z7D2C8K2730QBF'))
+//	AND (("status"."account_id" = '01F8MH1H7YV1Z7D2C8K2730QBF') OR ("status"."in_reply_to_account_id" = '01F8MH1H7YV1Z7D2C8K2730QBF') OR ("status"."visibility" = 2))
 //	AND ("status"."id" < 'ZZZZZZZZZZZZZZZZZZZZZZZZZZ')
 //	AND ((SELECT "status"."content" || COALESCE("status"."content_warning", '') AS "status_text") LIKE '%hello%' ESCAPE '\')
 //	ORDER BY "status"."id" DESC LIMIT 10
@@ -292,13 +293,31 @@ func (s *searchDB) SearchForStatuses(
 		Column("status.id").
 		// Ignore boosts.
 		Where("? IS NULL", bun.Ident("status.boost_of_id")).
-		// Select only statuses created by
-		// accountID or replying to accountID.
+		// Do not let deletion stubs consume a result slot.
+		Where(db.BitNotSet("status.flags", gtsmodel.StatusFlagDeleted)).
+		// Search public posts in the local database as well as the requester's
+		// own posts and replies. Author indexability does not restrict this
+		// authenticated local search; API visibility checks still apply.
 		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
 			return q.
 				Where("? = ?", bun.Ident("status.account_id"), requestingAccountID).
-				WhereOr("? = ?", bun.Ident("status.in_reply_to_account_id"), requestingAccountID)
+				WhereOr("? = ?", bun.Ident("status.in_reply_to_account_id"), requestingAccountID).
+				WhereGroup(" OR ", func(q *bun.SelectQuery) *bun.SelectQuery {
+					return q.Where("? = ?", bun.Ident("status.visibility"), gtsmodel.VisibilityPublic).
+						WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+							return q.Where(db.BitNotSet("status.flags", gtsmodel.StatusFlagPendingApproval)).
+								WhereOr("? = ?", bun.Ident("status.quote_account_id"), requestingAccountID)
+						})
+				})
 		})
+	// Apply stable account exclusions before LIMIT. Filtering them only when
+	// packaging the API page can turn a valid search into an empty result.
+	q = q.Where("? NOT IN (?)", bun.Ident("status.account_id"),
+		s.db.NewSelect().Table("blocks").Column("target_account_id").Where("account_id = ?", requestingAccountID)).
+		Where("? NOT IN (?)", bun.Ident("status.account_id"),
+			s.db.NewSelect().Table("blocks").Column("account_id").Where("target_account_id = ?", requestingAccountID)).
+		Where("? NOT IN (?)", bun.Ident("status.account_id"),
+			s.db.NewSelect().Table("accounts").Column("id").Where("suspended_at IS NOT NULL"))
 	if fromAccountID != "" {
 		q = q.Where("? = ?", bun.Ident("status.account_id"), fromAccountID)
 	}

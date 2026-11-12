@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: "Exact release version, for example 0.22.1-plus.4 (leave empty for a development build)"
+        description: "Exact release version, for example 0.22.3-plus.9 (leave empty for a development build)"
         required: false
         type: string
 
@@ -38,7 +38,8 @@ jobs:
     env:
       CGO_ENABLED: "0"
       GOFLAGS: "-mod=vendor"
-      PLUS_BASE_VERSION: "0.22.1"
+      PLUS_BASE_VERSION: "0.22.3"
+      PLUS_RELEASE_BRANCH: "plus/v0.22.1"
       PLUS_DEV_RELEASE: "8"
       GTS_TEST_POSTGRES_DSN: "postgres://gotosocial:gotosocial@localhost:5432/gotosocial_test?sslmode=disable"
 
@@ -77,9 +78,9 @@ jobs:
           requested_version="${{ inputs.release_version }}"
           if [[ -n "${requested_version}" ]]
           then
-            if [[ "${GITHUB_REF_NAME}" != "plus/v${PLUS_BASE_VERSION}" ]]
+            if [[ "${GITHUB_REF_NAME}" != "${PLUS_RELEASE_BRANCH}" ]]
             then
-              echo "Release builds must run from plus/v${PLUS_BASE_VERSION}." >&2
+              echo "Release builds must run from ${PLUS_RELEASE_BRANCH}." >&2
               exit 1
             fi
             if [[ ! "${requested_version}" =~ ^${PLUS_BASE_VERSION}-plus\.[0-9]+$ ]]
@@ -127,6 +128,9 @@ jobs:
           test_log="$(mktemp)"
           trap 'rm -f "${test_log}"' EXIT
           if ! go test -tags="netgo osusergo static_build kvformat timetzdata" -timeout=20m \
+            ./internal/api/client/accounts \
+            ./internal/api/auth \
+            ./internal/util \
             ./internal/api/client/interactionrequests \
             ./internal/api/client/instance \
             ./internal/api/util \
@@ -140,9 +144,12 @@ jobs:
             ./internal/filter/interaction \
             ./internal/middleware \
             ./internal/processing \
+            ./internal/processing/account \
             ./internal/processing/interactionrequests \
+            ./internal/processing/status \
             ./internal/processing/workers \
             ./internal/typeutils \
+            ./internal/api/client/search \
             ./internal/web >"${test_log}" 2>&1
           then
             sed '/func=bundb.queryLogger/d' "${test_log}" |

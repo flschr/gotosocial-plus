@@ -1,6 +1,6 @@
 module code.superseriousbusiness.org/gotosocial
 
-go 1.25.0
+go 1.26.10
 
 // Replace modernc/sqlite with our version that fixes the concurrency INTERRUPT issue
 replace modernc.org/sqlite => gitlab.com/NyaaaWhatsUpDoc/sqlite v1.53.0-concurrency-workaround
@@ -11,7 +11,7 @@ replace github.com/gin-gonic/gin => codeberg.org/superseriousbusiness/gin v1.11.
 require (
 	code.superseriousbusiness.org/activity v1.19.0
 	code.superseriousbusiness.org/exif-terminator v0.11.4
-	code.superseriousbusiness.org/gopkg v0.0.0-20260623123713-4ead213a2d22
+	code.superseriousbusiness.org/gopkg v0.0.0-20260917162940-3a60c829c42b
 	code.superseriousbusiness.org/httpsig v1.5.0
 	code.superseriousbusiness.org/oauth2/v4 v4.5.4-0.20250812115401-3961e46a7384
 	codeberg.org/gruf/go-bytesize v1.0.4
@@ -24,17 +24,17 @@ require (
 	codeberg.org/gruf/go-fastpath/v2 v2.0.1
 	codeberg.org/gruf/go-ffmpreg v0.6.20
 	codeberg.org/gruf/go-iotools v0.0.0-20240710125620-934ae9c654cf
-	codeberg.org/gruf/go-kv/v2 v2.0.10
+	codeberg.org/gruf/go-kv/v2 v2.0.11
 	codeberg.org/gruf/go-list v0.0.0-20240425093752-494db03d641f
 	codeberg.org/gruf/go-longdur v0.1.3
-	codeberg.org/gruf/go-mempool v0.0.0-20251205182607-a05549c9a993
+	codeberg.org/gruf/go-mempool v0.0.0-20260904112209-3edeee5f281e
 	codeberg.org/gruf/go-mmap v0.0.0-20251111184116-345a42dab154
-	codeberg.org/gruf/go-mutexes v1.5.9
+	codeberg.org/gruf/go-mutexes v1.5.10
 	codeberg.org/gruf/go-runners v1.7.0
 	codeberg.org/gruf/go-sched v1.3.1
 	codeberg.org/gruf/go-split v1.2.1
 	codeberg.org/gruf/go-storage v0.6.1
-	codeberg.org/gruf/go-structr v0.9.16
+	codeberg.org/gruf/go-structr v0.9.18
 	github.com/DmitriyVTitov/size v1.5.0
 	github.com/KimMachineGun/automemlimit v0.7.5
 	github.com/SherClockHolmes/webpush-go v1.4.0
@@ -106,9 +106,9 @@ require (
 	code.superseriousbusiness.org/go-jpeg-image-structure/v2 v2.3.0 // indirect
 	code.superseriousbusiness.org/go-png-image-structure/v2 v2.3.0 // indirect
 	codeberg.org/gruf/go-kv v1.6.5 // indirect
-	codeberg.org/gruf/go-mangler/v2 v2.0.9 // indirect
+	codeberg.org/gruf/go-mangler/v2 v2.0.10 // indirect
 	codeberg.org/gruf/go-maps v1.0.4 // indirect
-	codeberg.org/gruf/go-xunsafe v0.0.0-20260211121553-1c99e9364fee // indirect
+	codeberg.org/gruf/go-xunsafe v0.0.0-20260820215719-ea52483480e5 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.5.0 // indirect

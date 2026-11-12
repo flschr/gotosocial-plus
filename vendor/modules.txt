@@ -213,7 +213,7 @@ code.superseriousbusiness.org/go-jpeg-image-structure/v2
 # code.superseriousbusiness.org/go-png-image-structure/v2 v2.3.0
 ## explicit; go 1.12
 code.superseriousbusiness.org/go-png-image-structure/v2
-# code.superseriousbusiness.org/gopkg v0.0.0-20260623123713-4ead213a2d22
+# code.superseriousbusiness.org/gopkg v0.0.0-20260917162940-3a60c829c42b
 ## explicit; go 1.25.0
 code.superseriousbusiness.org/gopkg/buffers
 code.superseriousbusiness.org/gopkg/log
@@ -269,7 +269,7 @@ codeberg.org/gruf/go-iotools
 ## explicit; go 1.20
 codeberg.org/gruf/go-kv
 codeberg.org/gruf/go-kv/format
-# codeberg.org/gruf/go-kv/v2 v2.0.10
+# codeberg.org/gruf/go-kv/v2 v2.0.11
 ## explicit; go 1.24.6
 codeberg.org/gruf/go-kv/v2
 codeberg.org/gruf/go-kv/v2/format
@@ -279,19 +279,19 @@ codeberg.org/gruf/go-list
 # codeberg.org/gruf/go-longdur v0.1.3
 ## explicit; go 1.20
 codeberg.org/gruf/go-longdur
-# codeberg.org/gruf/go-mangler/v2 v2.0.9
+# codeberg.org/gruf/go-mangler/v2 v2.0.10
 ## explicit; go 1.24.6
 codeberg.org/gruf/go-mangler/v2
 # codeberg.org/gruf/go-maps v1.0.4
 ## explicit; go 1.20
 codeberg.org/gruf/go-maps
-# codeberg.org/gruf/go-mempool v0.0.0-20251205182607-a05549c9a993
+# codeberg.org/gruf/go-mempool v0.0.0-20260904112209-3edeee5f281e
 ## explicit; go 1.24.0
 codeberg.org/gruf/go-mempool
 # codeberg.org/gruf/go-mmap v0.0.0-20251111184116-345a42dab154
 ## explicit; go 1.20
 codeberg.org/gruf/go-mmap
-# codeberg.org/gruf/go-mutexes v1.5.9
+# codeberg.org/gruf/go-mutexes v1.5.10
 ## explicit; go 1.24.0
 codeberg.org/gruf/go-mutexes
 # codeberg.org/gruf/go-runners v1.7.0
@@ -311,10 +311,10 @@ codeberg.org/gruf/go-storage/internal
 codeberg.org/gruf/go-storage/memory
 codeberg.org/gruf/go-storage/s3
 codeberg.org/gruf/go-storage/s3/cache
-# codeberg.org/gruf/go-structr v0.9.16
+# codeberg.org/gruf/go-structr v0.9.18
 ## explicit; go 1.24.6
 codeberg.org/gruf/go-structr
-# codeberg.org/gruf/go-xunsafe v0.0.0-20260211121553-1c99e9364fee
+# codeberg.org/gruf/go-xunsafe v0.0.0-20260820215719-ea52483480e5
 ## explicit; go 1.24.6
 codeberg.org/gruf/go-xunsafe
 # dario.cat/mergo v1.0.2
