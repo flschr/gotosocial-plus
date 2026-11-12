@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: "Exact release version, for example 0.22.1-plus.4 (leave empty for a development build)"
+        description: "Exact release version, for example 0.22.3-plus.9 (leave empty for a development build)"
         required: false
         type: string
 
