@@ -149,6 +149,7 @@ jobs:
             ./internal/processing/status \
             ./internal/processing/workers \
             ./internal/typeutils \
+            ./internal/api/client/search \
             ./internal/web >"${test_log}" 2>&1
           then
             sed '/func=bundb.queryLogger/d' "${test_log}" |

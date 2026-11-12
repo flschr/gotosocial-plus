@@ -252,6 +252,29 @@ The frontend build must run `yarn ts-patch install` after installing packages
 and before `yarn build`. Always deploy the binary, `web/assets`, and
 `web/template` from the same archive.
 
+## Local public post search
+
+Authenticated text searches also search public posts already stored on the
+instance, including posts from remote accounts that the searching user does not
+follow. The author's `indexable` preference is deliberately not used to restrict
+this local authenticated search. This is a local operator policy of this fork.
+
+The existing search of the user's own posts and replies to them remains available,
+including non-public posts that the requester is allowed to see. Other unrelated
+unlisted, followers-only and direct posts are not added to the searchable set.
+Account blocks and normal status visibility checks still apply to search results.
+Boost wrappers remain excluded, and existing author filters and ID pagination
+continue to apply.
+
+This extends the existing database text matching, without a new search engine,
+external index, background crawler or database migration. It does not provide a
+global Fediverse search or anonymous search access, and it does not change what
+other instances can index. Results depend on which posts are stored locally.
+
+Search limits apply to visible results. Blocked, suspended, deleted and pending
+candidates do not displace eligible matches; remaining visibility exclusions
+are handled by fetching subsequent candidate batches within a five-second
+search budget. Upward and downward pages retain descending result order.
 ## Upstream security baseline
 
 Development builds incorporate upstream v0.22.3, including the v0.22.2 two-factor
