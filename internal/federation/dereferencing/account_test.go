@@ -583,7 +583,11 @@ func (suite *AccountTestSuite) TestRejectRemoteAccountWithForeignProfileURL() {
 	raw["url"] = "https://victim.example/@turniplover6969"
 	body, err := json.Marshal(raw)
 	suite.Require().NoError(err)
+	fallback := suite.client
 	client := testrig.NewMockHTTPClient(func(req *http.Request) (*http.Response, error) {
+		if req.URL.String() != uri {
+			return fallback.Do(req)
+		}
 		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/activity+json"}}, Body: io.NopCloser(bytes.NewReader(body)), ContentLength: int64(len(body)), Request: req}, nil
 	}, "")
 	suite.dereferencer = dereferencing.NewDereferencer(&suite.state, suite.converter, testrig.NewTestTransportController(&suite.state, client), suite.visFilter, suite.intFilter, suite.relayFilter, suite.media)
