@@ -105,6 +105,14 @@ while waiting for status storage locks. Existing canonical statuses discovered
 through aliases are left unchanged; a concurrent Delete wins over older fetched
 or pushed representations and cannot be undone by historical imports.
 
+### Vendored concurrency compatibility
+
+The local `go-mempool` patch uses an atomic pointer exchange for per-processor
+pool slots. This makes buffer ownership handoff explicit for concurrent logging
+and Go race-instrumented tests. Preserve this patch when refreshing vendor until
+the dependency provides equivalent synchronization. No logging diagnostics need
+to be disabled for the concurrent profile-refresh tests.
+
 ## Link preview cards
 
 When enabled, GoToSocial Plus creates a Mastodon-compatible preview card for

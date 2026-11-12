@@ -233,9 +233,9 @@ func (r *locals_ring) clear() { atomic.StorePointer(&r.p, nil) }
 type pointer_elem struct{ p unsafe.Pointer }
 
 func (p *pointer_elem) Swap(new unsafe.Pointer) unsafe.Pointer {
-	old := p.p
-	p.p = new
-	return old
+	// procPin serializes access to a slot. An atomic exchange also publishes
+	// ownership of its contents across goroutines to race-instrumented builds.
+	return atomic.SwapPointer(&p.p, new)
 }
 
 // maxprocs prevents runtime.GOMAXPROCS() from
