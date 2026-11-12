@@ -573,3 +573,24 @@ func setPublicKey(person vocab.ActivityStreamsPerson, ownerURI, keyURI string, k
 	// set the public key property on the Person
 	person.SetW3IDSecurityV1PublicKey(publicKeyProp)
 }
+
+func (suite *AccountTestSuite) TestRejectRemoteAccountWithForeignProfileURL() {
+	const uri = "https://turnip.farm/users/turniplover6969"
+	person := suite.client.TestRemotePeople[uri]
+	raw, err := ap.Serialize(person)
+	suite.Require().NoError(err)
+	// Matching actor ID must not legitimize a URL on an unrelated host.
+	raw["url"] = "https://victim.example/@turniplover6969"
+	body, err := json.Marshal(raw)
+	suite.Require().NoError(err)
+	client := testrig.NewMockHTTPClient(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/activity+json"}}, Body: io.NopCloser(bytes.NewReader(body)), ContentLength: int64(len(body)), Request: req}, nil
+	}, "")
+	suite.dereferencer = dereferencing.NewDereferencer(&suite.state, suite.converter, testrig.NewTestTransportController(&suite.state, client), suite.visFilter, suite.intFilter, suite.relayFilter, suite.media)
+	account, _, err := suite.dereferencer.GetAccountByURI(suite.T().Context(), suite.testAccounts["local_account_1"].Username, testrig.URLMustParse(uri), false)
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "mismatch account URI hosts")
+	suite.Nil(account)
+	_, err = suite.db.GetAccountByURI(suite.T().Context(), uri)
+	suite.ErrorIs(err, db.ErrNoEntries)
+}
