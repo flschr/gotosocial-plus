@@ -237,3 +237,8 @@ This extends the existing database text matching, without a new search engine,
 external index, background crawler or database migration. It does not provide a
 global Fediverse search or anonymous search access, and it does not change what
 other instances can index. Results depend on which posts are stored locally.
+
+Search limits apply to visible results. Blocked, suspended, deleted and pending
+candidates do not displace eligible matches; remaining visibility exclusions
+are handled by fetching subsequent candidate batches within a five-second
+search budget. Upward and downward pages retain descending result order.

@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"sort"
 	"testing"
+	"time"
 
 	apimodel "code.superseriousbusiness.org/gotosocial/internal/api/model"
 	apiutil "code.superseriousbusiness.org/gotosocial/internal/api/util"
@@ -22,14 +23,19 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-type PublicStatusSearchTestSuite struct{ SearchStandardTestSuite }
+type PublicStatusSearchTestSuite struct {
+	SearchStandardTestSuite
+	sequence int
+}
 
 const publicSearchTerm = "publicsearchregression"
 
 func (s *PublicStatusSearchTestSuite) addSearchStatus(accountKey string, visibility gtsmodel.Visibility) string {
 	a := s.testAccounts[accountKey]
 	status := *testrig.NewTestStatuses()["remote_account_1_status_1"]
-	status.ID = id.NewULID()
+	s.sequence++
+	status.CreatedAt = time.Date(2026, 11, 12, 0, 0, 0, 0, time.UTC).Add(time.Duration(s.sequence) * time.Second)
+	status.ID = id.NewULIDFromTime(status.CreatedAt)
 	status.URI = a.URI + "/statuses/" + status.ID
 	status.URL = status.URI
 	status.AccountID, status.AccountURI = a.ID, a.URI
@@ -44,7 +50,9 @@ func (s *PublicStatusSearchTestSuite) searchPublic(params url.Values, authentica
 	if params == nil {
 		params = url.Values{}
 	}
-	params.Set("q", publicSearchTerm)
+	if !params.Has("q") {
+		params.Set("q", publicSearchTerm)
+	}
 	params.Set("type", "statuses")
 	params.Set("resolve", "false")
 	recorder := httptest.NewRecorder()
@@ -136,6 +144,88 @@ func (s *PublicStatusSearchTestSuite) TestBoostWrappersExcluded() {
 	result, code := s.searchPublic(nil, true)
 	s.Require().Equal(http.StatusOK, code)
 	s.Empty(result.Statuses)
+}
+
+func (s *PublicStatusSearchTestSuite) TestBlockedCandidatesDoNotConsumePage() {
+	visible := s.addSearchStatus("remote_account_1", gtsmodel.VisibilityPublic)
+	s.addSearchStatus("remote_account_2", gtsmodel.VisibilityPublic)
+	local, blocked := s.testAccounts["local_account_1"], s.testAccounts["remote_account_2"]
+	s.Require().NoError(s.db.PutBlock(s.T().Context(), &gtsmodel.Block{ID: id.NewULID(), URI: local.URI + "/blocks/page", AccountID: local.ID, TargetAccountID: blocked.ID}))
+	result, code := s.searchPublic(url.Values{"limit": {"1"}}, true)
+	s.Require().Equal(http.StatusOK, code)
+	s.Require().Len(result.Statuses, 1, "a newer blocked post must not hide the visible result")
+	s.Equal(visible, result.Statuses[0].ID)
+}
+
+func (s *PublicStatusSearchTestSuite) TestSuspendedCandidatesDoNotConsumePage() {
+	visible := s.addSearchStatus("remote_account_1", gtsmodel.VisibilityPublic)
+	s.addSearchStatus("remote_account_2", gtsmodel.VisibilityPublic)
+	suspended := s.testAccounts["remote_account_2"]
+	suspended.SuspendedAt = time.Now()
+	s.Require().NoError(s.db.UpdateAccount(s.T().Context(), suspended, "suspended_at"))
+	result, code := s.searchPublic(url.Values{"limit": {"1"}}, true)
+	s.Require().Equal(http.StatusOK, code)
+	s.Require().Len(result.Statuses, 1)
+	s.Equal(visible, result.Statuses[0].ID)
+}
+func (s *PublicStatusSearchTestSuite) TestPendingCandidatesDoNotConsumePage() {
+	visible := s.addSearchStatus("remote_account_1", gtsmodel.VisibilityPublic)
+	pendingID := s.addSearchStatus("remote_account_2", gtsmodel.VisibilityPublic)
+	pending, err := s.db.GetStatusByID(s.T().Context(), pendingID)
+	s.Require().NoError(err)
+	pending.Flags.SetPendingApproval(true)
+	s.Require().NoError(s.db.UpdateStatus(s.T().Context(), pending, "flags"))
+	result, code := s.searchPublic(url.Values{"limit": {"1"}}, true)
+	s.Require().Equal(http.StatusOK, code)
+	s.Require().Len(result.Statuses, 1)
+	s.Equal(visible, result.Statuses[0].ID)
+}
+func (s *PublicStatusSearchTestSuite) TestDeletedCandidatesDoNotConsumeAuthorPage() {
+	visible := s.addSearchStatus("remote_account_1", gtsmodel.VisibilityPublic)
+	deletedID := s.addSearchStatus("remote_account_1", gtsmodel.VisibilityPublic)
+	deleted, err := s.db.GetStatusByID(s.T().Context(), deletedID)
+	s.Require().NoError(err)
+	s.Require().NoError(s.db.StubStatus(s.T().Context(), deleted, true))
+	author := s.testAccounts["remote_account_1"]
+	result, code := s.searchPublic(url.Values{"limit": {"1"}, "q": {"from:" + author.Username + "@" + author.Domain}}, true)
+	s.Require().Equal(http.StatusOK, code)
+	s.Require().Len(result.Statuses, 1)
+	s.Equal(visible, result.Statuses[0].ID)
+}
+
+func (s *PublicStatusSearchTestSuite) TestDomainBlockedCandidatesDoNotConsumePage() {
+	visible := s.addSearchStatus("remote_account_1", gtsmodel.VisibilityPublic)
+	s.addSearchStatus("remote_account_2", gtsmodel.VisibilityPublic)
+	blocked := s.testAccounts["remote_account_2"]
+	s.Require().NoError(s.db.PutDomainBlock(s.T().Context(), &gtsmodel.DomainBlock{ID: id.NewULID(), Domain: blocked.Domain, CreatedByAccountID: s.testAccounts["admin_account"].ID}))
+	result, code := s.searchPublic(url.Values{"limit": {"1"}}, true)
+	s.Require().Equal(http.StatusOK, code)
+	s.Require().Len(result.Statuses, 1)
+	s.Equal(visible, result.Statuses[0].ID)
+}
+
+func (s *PublicStatusSearchTestSuite) TestReverseBlockDoesNotConsumePage() {
+	visible := s.addSearchStatus("remote_account_1", gtsmodel.VisibilityPublic)
+	s.addSearchStatus("remote_account_2", gtsmodel.VisibilityPublic)
+	local, remote := s.testAccounts["local_account_1"], s.testAccounts["remote_account_2"]
+	s.Require().NoError(s.db.PutBlock(s.T().Context(), &gtsmodel.Block{ID: id.NewULID(), URI: remote.URI + "/blocks/page", AccountID: remote.ID, TargetAccountID: local.ID}))
+	result, code := s.searchPublic(url.Values{"limit": {"1"}}, true)
+	s.Require().Equal(http.StatusOK, code)
+	s.Require().Len(result.Statuses, 1)
+	s.Equal(visible, result.Statuses[0].ID)
+}
+func (s *PublicStatusSearchTestSuite) TestUpwardPageRefillsAndPreservesOrder() {
+	oldest := s.addSearchStatus("remote_account_1", gtsmodel.VisibilityPublic)
+	first := s.addSearchStatus("remote_account_1", gtsmodel.VisibilityPublic)
+	s.addSearchStatus("remote_account_2", gtsmodel.VisibilityPublic)
+	second := s.addSearchStatus("remote_account_1", gtsmodel.VisibilityPublic)
+	blocked := s.testAccounts["remote_account_2"]
+	s.Require().NoError(s.db.PutDomainBlock(s.T().Context(), &gtsmodel.DomainBlock{ID: id.NewULID(), Domain: blocked.Domain, CreatedByAccountID: s.testAccounts["admin_account"].ID}))
+	result, code := s.searchPublic(url.Values{"limit": {"2"}, "min_id": {oldest}}, true)
+	s.Require().Equal(http.StatusOK, code)
+	s.Require().Len(result.Statuses, 2)
+	s.Equal(second, result.Statuses[0].ID)
+	s.Equal(first, result.Statuses[1].ID)
 }
 
 func TestPublicStatusSearch(t *testing.T) { suite.Run(t, new(PublicStatusSearchTestSuite)) }
