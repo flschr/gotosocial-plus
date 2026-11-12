@@ -61,6 +61,20 @@ func (p *Processor) StatusesGet(
 		}
 	}
 
+	// Only the authenticated, unpaged profile view initiates a remote fetch.
+	// Pagination and pinned tabs continue to use the local snapshot.
+	if requester != nil && maxID == "" && minID == "" && !pinned {
+		account, err := p.state.DB.GetAccountByID(ctx, targetAccountID)
+		if err != nil && !errors.Is(err, db.ErrNoEntries) {
+			return nil, gtserror.NewErrorInternalError(err)
+		}
+		if account != nil && account.Domain != "" {
+			if err := p.federator.RefreshAccountOutbox(ctx, account); err != nil {
+				log.Debugf(ctx, "remote profile refresh failed for %s: %v", account.URI, err)
+			}
+		}
+	}
+
 	var (
 		statuses []*gtsmodel.Status
 		err      error

@@ -243,10 +243,10 @@ func (r *locals_ring) clear() { atomic.StorePointer(&r.p, nil) }
 // swapping of a slice element nicer on the eyes.
 type pointer_elem struct{ p unsafe.Pointer }
 
-func (e *pointer_elem) Swap(p unsafe.Pointer) unsafe.Pointer {
-	o := e.p
-	e.p = p
-	return o
+func (p *pointer_elem) Swap(new unsafe.Pointer) unsafe.Pointer {
+	// procPin serializes access to a slot. An atomic exchange also publishes
+	// ownership of its contents across goroutines to race-instrumented builds.
+	return atomic.SwapPointer(&p.p, new)
 }
 
 // note is int in runtime, but should never be negative.

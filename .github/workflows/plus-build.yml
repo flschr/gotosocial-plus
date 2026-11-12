@@ -128,6 +128,7 @@ jobs:
           test_log="$(mktemp)"
           trap 'rm -f "${test_log}"' EXIT
           if ! go test -tags="netgo osusergo static_build kvformat timetzdata" -timeout=20m \
+            ./internal/api/client/accounts \
             ./internal/api/auth \
             ./internal/util \
             ./internal/api/client/interactionrequests \
@@ -143,7 +144,9 @@ jobs:
             ./internal/filter/interaction \
             ./internal/middleware \
             ./internal/processing \
+            ./internal/processing/account \
             ./internal/processing/interactionrequests \
+            ./internal/processing/status \
             ./internal/processing/workers \
             ./internal/typeutils \
             ./internal/api/client/search \
