@@ -233,3 +233,27 @@ func (d *Dereferencer) onEmojiDereference(ctx context.Context, emoji *gtsmodel.E
 		}
 	}
 }
+
+// lockDereference preserves the shared federation model lock while allowing a request
+// deadline or disconnect to end lock contention before storage begins.
+func (d *Dereferencer) lockDereference(ctx context.Context, uri string) (func(), error) {
+	delay := time.Millisecond
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if unlock := d.state.FedLocks.TryLock(uri); unlock != nil {
+			return unlock, nil
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+		if delay < 16*time.Millisecond {
+			delay *= 2
+		}
+	}
+}

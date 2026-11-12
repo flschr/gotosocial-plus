@@ -466,7 +466,10 @@ func (d *Dereferencer) enrichAccountSafely(
 	// Acquire per-URI deref lock, wraping unlock
 	// to safely defer in case of panic, while still
 	// performing more granular unlocks when needed.
-	unlock := d.state.FedLocks.Lock(uriStr)
+	unlock, err := d.lockDereference(ctx, uriStr)
+	if err != nil {
+		return nil, nil, err
+	}
 	unlock = util.DoOnce(unlock)
 	defer unlock()
 

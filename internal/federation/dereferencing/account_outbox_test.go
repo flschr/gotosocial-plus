@@ -279,4 +279,23 @@ func (s *ProfileHistoryTestSuite) TestBlockedAccountDomainDoesNotFetch() {
 	s.Zero(calls.Load())
 }
 
+func (s *ProfileHistoryTestSuite) TestAccountLockHonorsCancellation() {
+	account := s.testAccounts["remote_account_1"]
+	unlock := s.state.FedLocks.Lock(account.URI)
+	ctx, cancel := context.WithTimeout(s.T().Context(), 30*time.Millisecond)
+	defer cancel()
+	result := make(chan error, 1)
+	go func() {
+		_, _, err := s.dereferencer.RefreshAccount(ctx, "", account, nil, &dereferencing.Freshest)
+		result <- err
+	}()
+	select {
+	case err := <-result:
+		s.ErrorIs(err, context.DeadlineExceeded)
+	case <-time.After(200 * time.Millisecond):
+		s.Fail("account refresh lock ignored request cancellation")
+	}
+	unlock()
+}
+
 func TestProfileHistory(t *testing.T) { suite.Run(t, new(ProfileHistoryTestSuite)) }

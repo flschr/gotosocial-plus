@@ -375,30 +375,6 @@ func (d *Dereferencer) getStatusByURI(
 	)
 }
 
-// lockStatus preserves the federation model lock while allowing a request
-// deadline or disconnect to end lock contention before storage begins.
-func (d *Dereferencer) lockStatus(ctx context.Context, uri string) (func(), error) {
-	delay := time.Millisecond
-	for {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		if unlock := d.state.FedLocks.TryLock(uri); unlock != nil {
-			return unlock, nil
-		}
-		timer := time.NewTimer(delay)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return nil, ctx.Err()
-		case <-timer.C:
-		}
-		if delay < 16*time.Millisecond {
-			delay *= 2
-		}
-	}
-}
-
 // enrichAndStoreStatusSafely wraps enrichStatus() to perform it within a
 // State{}.FedLocks mutexmap, which protects it within per-URI mutex locks.
 // This also handles necessary delete of now-deleted statuses, and updating
@@ -420,7 +396,7 @@ func (d *Dereferencer) enrichAndStoreStatusSafely(
 	// Acquire per-URI deref lock, wraping unlock
 	// to safely defer in case of panic, while still
 	// performing more granular unlocks when needed.
-	unlock, err := d.lockStatus(ctx, uriStr)
+	unlock, err := d.lockDereference(ctx, uriStr)
 	if err != nil {
 		return nil, nil, false, err
 	}
