@@ -115,3 +115,31 @@ func (suite *AuthAuthorizeTestSuite) TestAccountAuthorizeHandler() {
 func TestAccountUpdateTestSuite(t *testing.T) {
 	suite.Run(t, new(AuthAuthorizeTestSuite))
 }
+
+// A password-only session must not issue an authorization code before 2FA.
+func (suite *AuthAuthorizeTestSuite) TestAwaitingTwoFactorCannotAuthorize() {
+	ctx, recorder := suite.newContext(http.MethodPost, "oauth/authorize", nil, "")
+	session := sessions.Default(ctx)
+	session.Set("userid_awaiting_2fa", suite.testUsers["local_account_1"].ID)
+	session.Set("response_type", "code")
+	session.Set("client_id", suite.testApplications["application_1"].ClientID)
+	session.Set("redirect_uri", "https://localhost/callback")
+	session.Set("scope", "read")
+	suite.Require().NoError(session.Save())
+	suite.authModule.AuthorizePOSTHandler(ctx)
+	suite.Equal(http.StatusInternalServerError, recorder.Code)
+	suite.Empty(recorder.Header().Get("Location"))
+	suite.Nil(session.Get("userid_awaiting_2fa"))
+}
+
+func (suite *AuthAuthorizeTestSuite) TestAwaitingTwoFactorCannotReadOOBCode() {
+	ctx, recorder := suite.newContext(http.MethodGet, "oauth/oob?code=secret-code", nil, "")
+	session := sessions.Default(ctx)
+	session.Set("userid_awaiting_2fa", suite.testUsers["local_account_1"].ID)
+	session.Set("scope", "read")
+	suite.Require().NoError(session.Save())
+	suite.authModule.OOBTokenGETHandler(ctx)
+	suite.Equal(http.StatusInternalServerError, recorder.Code)
+	suite.NotContains(recorder.Body.String(), "secret-code")
+	suite.Nil(session.Get("userid_awaiting_2fa"))
+}
