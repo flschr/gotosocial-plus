@@ -108,6 +108,38 @@ func URIMatches(expect *url.URL, uris ...*url.URL) (ok bool, err error) {
 	return false, nil
 }
 
+// SameHost returns true if all given URIs
+// share a host, taking account of punycode.
+func SameHost(uris ...*url.URL) (ok bool, err error) {
+	if len(uris) <= 1 {
+		// One or fewer URIs means
+		// check will always pass.
+		return true, nil
+	}
+
+	// Store first host to compare against.
+	firstHost, err := Punify(uris[0].Host)
+	if err != nil {
+		return false, err
+	}
+
+	// Check from second URI onwards.
+	for _, uri := range uris[1:] {
+		punyHost, err := Punify(uri.Host)
+		if err != nil {
+			return false, err
+		}
+
+		if punyHost != firstHost {
+			// Not the same!
+			return false, nil
+		}
+	}
+
+	// All matched.
+	return true, nil
+}
+
 // PunifyURI returns a new copy of URI with the 'host'
 // part converted to punycode with PunifySafely().
 // For simple comparisons prefer the faster URIMatches().

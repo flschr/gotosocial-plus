@@ -73,18 +73,18 @@ func AppendJust[T any](in []T, extra ...T) []T {
 
 // Deduplicate deduplicates entries in the given slice.
 func Deduplicate[T comparable](in []T) []T {
-	var (
-		inL     = len(in)
-		unique  = make(map[T]struct{}, inL)
-		deduped = make([]T, 0, inL)
-	)
+	unique := make(map[T]struct{}, len(in))
+	deduped := make([]T, 0, len(in))
 
+	// Iterate input slice.
 	for _, v := range in {
+
+		// Check if already exists.
 		if _, ok := unique[v]; ok {
-			// Already have this.
 			continue
 		}
 
+		// Append unique value.
 		unique[v] = struct{}{}
 		deduped = append(deduped, v)
 	}

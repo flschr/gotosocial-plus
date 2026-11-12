@@ -39,8 +39,9 @@ func (m *Module) mustSaveSession(s sessions.Session) {
 	}
 }
 
-// mustUserFromSession returns a *gtsmodel.User by checking the
-// session for a user id and fetching the user from the database.
+// mustUserFromSession returns a *gtsmodel.User by checking
+// the session for a user id stored under the given key,
+// and fetching the user from the database.
 //
 // On failure, the function clears session state, writes an internal
 // error to the response writer, and returns nil. Callers should always
@@ -48,22 +49,9 @@ func (m *Module) mustSaveSession(s sessions.Session) {
 func (m *Module) mustUserFromSession(
 	c *gin.Context,
 	s sessions.Session,
+	key string,
 ) *gtsmodel.User {
-	// Try "userid" key first, fall
-	// back to "userid_awaiting_2fa".
-	var userID string
-	for _, key := range [2]string{
-		sessionUserID,
-		sessionUserIDAwaiting2FA,
-	} {
-		var ok bool
-		userID, ok = s.Get(key).(string)
-		if ok && userID != "" {
-			// Got it.
-			break
-		}
-	}
-
+	userID, _ := s.Get(key).(string)
 	if userID == "" {
 		const safe = "neither userid nor userid_awaiting_2fa keys found in session"
 		m.clearSessionWithInternalError(c, s, errors.New(safe), safe, oauth.HelpfulAdvice)

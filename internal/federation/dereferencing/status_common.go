@@ -164,6 +164,22 @@ func (d *Dereferencer) retrieveStatusable(
 		return nil, nil, nil, gtserror.SetMalformed(err)
 	}
 
+	// We want attributedTo, URI, URL, and
+	// final URI to all share the same host.
+	uris = append(uris, finalURI)
+	uris = append(uris, ap.GetAttributedTo(statusable)...)
+	sameHost, err := util.SameHost(uris...)
+	if err != nil {
+		err := gtserror.Newf("error checking uri hosts %s: %w", finalURIStr, err)
+		return nil, nil, nil, gtserror.SetMalformed(err)
+	}
+
+	if !sameHost {
+		// Different hosts across URIs. Return malformed error type.
+		err := gtserror.Newf("mismatch status URI hosts: %v", log.Formatted(uris))
+		return nil, nil, nil, gtserror.SetMalformed(err)
+	}
+
 	// For the final returned URI we set
 	// status' canonical JSON-LD URI, as
 	// checks against its URI won't work
@@ -190,7 +206,12 @@ func (d *Dereferencer) convertStatusable(
 
 	// The status author, and the status
 	// JSON-LD ID must have the same host.
-	if attributedTo.Host != statusURI.Host {
+	sameHost, err := util.SameHost(attributedTo, statusURI)
+	if err != nil {
+		return nil, gtserror.SetMalformed(err)
+	}
+
+	if !sameHost {
 		err := gtserror.Newf("id and attributedTo hostnames differ: id=%s attributedTo=%s", attributedTo.Host, statusURI.Host)
 		return nil, gtserror.SetMalformed(err)
 	}

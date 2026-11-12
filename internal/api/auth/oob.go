@@ -37,7 +37,8 @@ func (m *Module) OOBTokenGETHandler(c *gin.Context) {
 		return
 	}
 
-	user := m.mustUserFromSession(c, s)
+	// User must be fully authed.
+	user := m.mustUserFromSession(c, s, sessionUserID)
 	if user == nil {
 		// Error already
 		// written.

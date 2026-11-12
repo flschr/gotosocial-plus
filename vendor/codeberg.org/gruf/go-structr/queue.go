@@ -196,6 +196,16 @@ func (q *Queue[T]) MoveBack(index *Index, keys ...Key) {
 	q.mutex.Unlock()
 }
 
+// Count returns how many values are indexed under any of keys.
+func (q *Queue[T]) Count(index *Index, keys ...Key) (n int) {
+	q.mutex.Lock()
+	for i := range keys {
+		index.get(keys[i].key, func(*indexed_item) { n++ })
+	}
+	q.mutex.Unlock()
+	return
+}
+
 // Len returns the current length of queue.
 func (q *Queue[T]) Len() int {
 	q.mutex.Lock()
