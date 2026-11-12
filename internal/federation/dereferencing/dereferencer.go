@@ -136,6 +136,10 @@ type Dereferencer struct {
 
 	// recently attempted remote reply collection refreshes
 	threadContextRefreshes cache.Cache[string, threadContextRefresh]
+	profileRefreshes       cache.Cache[string, profileRefresh]
+	profileRefreshSlots    chan struct{}
+	profileRefreshMu       sync.Mutex
+	profileInFlight        map[string]chan struct{}
 
 	// handshakes marks current in-progress handshakes
 	// occurring, useful to prevent a deadlock between
@@ -168,6 +172,9 @@ func NewDereferencer(
 		intFilter:              intFilter,
 		relayFilter:            relayFilter,
 		threadContextRefreshes: cache.New[string, threadContextRefresh](0, 1000),
+		profileRefreshes:       cache.New[string, profileRefresh](0, 1000),
+		profileRefreshSlots:    make(chan struct{}, 4),
+		profileInFlight:        make(map[string]chan struct{}),
 		handshakes:             make(map[string][]*url.URL),
 	}
 }
@@ -223,6 +230,30 @@ func (d *Dereferencer) onEmojiDereference(ctx context.Context, emoji *gtsmodel.E
 	if d.OnEmojiDereference != nil {
 		if err := d.OnEmojiDereference(ctx, emoji); err != nil {
 			log.Errorf(ctx, "error dereferencing emoji: %v", err)
+		}
+	}
+}
+
+// lockDereference preserves the shared federation model lock while allowing a request
+// deadline or disconnect to end lock contention before storage begins.
+func (d *Dereferencer) lockDereference(ctx context.Context, uri string) (func(), error) {
+	delay := time.Millisecond
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if unlock := d.state.FedLocks.TryLock(uri); unlock != nil {
+			return unlock, nil
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+		if delay < 16*time.Millisecond {
+			delay *= 2
 		}
 	}
 }

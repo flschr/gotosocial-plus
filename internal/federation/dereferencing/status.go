@@ -396,7 +396,10 @@ func (d *Dereferencer) enrichAndStoreStatusSafely(
 	// Acquire per-URI deref lock, wraping unlock
 	// to safely defer in case of panic, while still
 	// performing more granular unlocks when needed.
-	unlock := d.state.FedLocks.Lock(uriStr)
+	unlock, err := d.lockDereference(ctx, uriStr)
+	if err != nil {
+		return nil, nil, false, err
+	}
 	unlock = util.DoOnce(unlock)
 	defer unlock()
 
@@ -469,8 +472,10 @@ func (d *Dereferencer) enrichAndStoreStatusSafely(
 
 	switch {
 	case err == nil:
-		// Pass status to its dereferencer hook.
-		d.onStatusDereference(ctx, latest, isNew)
+		// Deleted canonical models are read-only; do not surface an old update.
+		if !latest.Flags.Deleted() {
+			d.onStatusDereference(ctx, latest, isNew)
+		}
 
 	case errors.Is(err, db.ErrAlreadyExists):
 		// We leave 'isNew' set so that caller
@@ -552,6 +557,12 @@ func (d *Dereferencer) enrichAndStoreStatus(
 			status = existing
 			isNew = false
 		}
+	}
+
+	// Resolve aliases before this lifecycle check, so a deleted canonical
+	// status cannot be resurrected through a previously unknown URL.
+	if status.Flags.Deleted() {
+		return status, nil, false, nil
 	}
 
 	// ActivityPub model was recently dereferenced, so assume passed status

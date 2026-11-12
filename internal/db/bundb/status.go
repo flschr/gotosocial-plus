@@ -733,13 +733,24 @@ func (s *statusDB) UpdateStatus(ctx context.Context, status *gtsmodel.Status, co
 				}
 			}
 
-			// Finally, update the status
-			if _, err := tx.NewUpdate().
-				Model(status).
-				Column(columns...).
-				Where("? = ?", bun.Ident("status.id"), status.ID).
-				Exec(ctx); err != nil {
+			// Delete wins even when this object was loaded before the deletion.
+			// A rejected write must roll back related changes and must not publish
+			// the stale model through cache.Store.
+			update := tx.NewUpdate().Model(status).Column(columns...).
+				Where("? = ?", bun.Ident("status.id"), status.ID)
+			if !status.Flags.Deleted() {
+				update = update.Where(db.BitNotSet("status.flags", gtsmodel.StatusFlagDeleted))
+			}
+			result, err := update.Exec(ctx)
+			if err != nil {
 				return err
+			}
+			rows, err := result.RowsAffected()
+			if err != nil {
+				return err
+			}
+			if rows == 0 {
+				return db.ErrNoEntries
 			}
 
 			return nil

@@ -80,6 +80,39 @@ The refresh uses normal federation and visibility rules. It does not provide
 access to private or otherwise unavailable posts, and a remote server can
 still return an incomplete conversation.
 
+## Remote profile history
+
+Opening a remote profile in an authenticated Mastodon-compatible client (such
+as Mona) attempts to import its latest public posts before returning the first
+page. The ActivityPub outbox must be available; servers may restrict or omit
+history, so a profile can still be incomplete.
+
+Each refresh examines at most 40 entries across four outbox pages, with a
+five-second deadline. Only public posts attributed to that profile are imported;
+boosts, unlisted posts, follower-only posts and direct messages are excluded.
+Normal API visibility and account filters still apply to the returned posts.
+The import uses the instance identity rather than the viewing user's identity.
+
+Successful refreshes are cached for ten minutes and failures for one minute in
+a bounded 1,000-profile cache. Simultaneous views of the same profile share the
+refresh, with at most four profiles refreshed concurrently. Existing history
+remains available if a remote server fails. Pagination, pinned-only requests,
+local profiles and unauthenticated requests do not initiate history imports.
+No configuration change or database migration is required.
+
+Remote profile refresh waiters honor their own request cancellation, including
+while waiting for status storage locks. Existing canonical statuses discovered
+through aliases are left unchanged; a concurrent Delete wins over older fetched
+or pushed representations and cannot be undone by historical imports.
+
+### Vendored concurrency compatibility
+
+The local `go-mempool` patch uses an atomic pointer exchange for per-processor
+pool slots. This makes buffer ownership handoff explicit for concurrent logging
+and Go race-instrumented tests. Preserve this patch when refreshing vendor until
+the dependency provides equivalent synchronization. No logging diagnostics need
+to be disabled for the concurrent profile-refresh tests.
+
 ## Link preview cards
 
 When enabled, GoToSocial Plus creates a Mastodon-compatible preview card for

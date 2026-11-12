@@ -34,6 +34,21 @@ type StatusTestSuite struct {
 	BunDBStandardTestSuite
 }
 
+func (suite *StatusTestSuite) TestStaleUpdateCannotResurrectDeletedStatus() {
+	ctx := suite.T().Context()
+	stale, err := suite.db.GetStatusByID(ctx, suite.testStatuses["remote_account_1_status_1"].ID)
+	suite.Require().NoError(err)
+	suite.Require().NoError(suite.db.UpdateStatus(ctx, stale, "content"), "a valid no-op update still affects the live row")
+	suite.Require().NoError(suite.db.StubStatus(ctx, stale, true))
+	// This object was loaded before Delete and still has the old flags/content.
+	err = suite.db.UpdateStatus(ctx, stale)
+	suite.ErrorIs(err, db.ErrNoEntries)
+	stored, err := suite.db.GetStatusByID(ctx, stale.ID)
+	suite.Require().NoError(err)
+	suite.True(stored.Flags.Deleted())
+	suite.Empty(stored.Content)
+}
+
 func (suite *StatusTestSuite) TestGetStatusByID() {
 	status, err := suite.db.GetStatusByID(suite.T().Context(), suite.testStatuses["local_account_1_status_1"].ID)
 	if err != nil {
