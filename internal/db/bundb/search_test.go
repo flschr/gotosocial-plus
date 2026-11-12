@@ -18,6 +18,7 @@
 package bundb_test
 
 import (
+	"code.superseriousbusiness.org/gotosocial/internal/gtsmodel"
 	"testing"
 
 	"code.superseriousbusiness.org/gotosocial/internal/db"
@@ -108,7 +109,7 @@ func (suite *SearchTestSuite) TestSearchStatuses() {
 
 	statuses, err := suite.db.SearchForStatuses(suite.T().Context(), testAccount.ID, "hello", "", "", "", 10, 0)
 	suite.NoError(err)
-	suite.Len(statuses, 1)
+	suite.Len(statuses, 2)
 }
 
 func (suite *SearchTestSuite) TestSearchStatusesFromAccount() {
@@ -117,8 +118,9 @@ func (suite *SearchTestSuite) TestSearchStatusesFromAccount() {
 
 	statuses, err := suite.db.SearchForStatuses(suite.T().Context(), testAccount.ID, "hi", fromAccount.ID, "", "", 10, 0)
 	suite.NoError(err)
-	if suite.Len(statuses, 1) {
-		suite.Equal(fromAccount.ID, statuses[0].AccountID)
+	suite.Len(statuses, 5)
+	for _, status := range statuses {
+		suite.Equal(fromAccount.ID, status.AccountID)
 	}
 }
 
@@ -137,6 +139,42 @@ func (suite *SearchTestSuite) TestSearchTags() {
 	tags, err = suite.db.SearchForTags(suite.T().Context(), "come", "", "", 10, 0)
 	suite.NoError(err)
 	suite.Len(tags, 0)
+}
+
+// The candidate query must add public remote posts without adding unrelated
+// non-public posts. API tests separately verify authentication and visibility.
+func (suite *SearchTestSuite) TestPublicStatusCandidates() {
+	ctx := suite.T().Context()
+	requester := suite.testAccounts["local_account_1"]
+	status := suite.testStatuses["remote_account_1_status_1"]
+	status.Content = "uniquepubliccandidate"
+	status.Visibility = gtsmodel.VisibilityPublic
+	suite.Require().NoError(suite.db.UpdateStatus(ctx, status, "content", "visibility"))
+	statuses, err := suite.db.SearchForStatuses(ctx, requester.ID, "uniquepubliccandidate", "", "", "", 10, 0)
+	suite.Require().NoError(err)
+	suite.Require().Len(statuses, 1)
+	suite.Equal(status.ID, statuses[0].ID)
+	for _, visibility := range []gtsmodel.Visibility{gtsmodel.VisibilityUnlocked, gtsmodel.VisibilityFollowersOnly, gtsmodel.VisibilityDirect} {
+		status.Visibility = visibility
+		suite.Require().NoError(suite.db.UpdateStatus(ctx, status, "visibility"))
+		statuses, err := suite.db.SearchForStatuses(ctx, requester.ID, "uniquepubliccandidate", "", "", "", 10, 0)
+		suite.NoError(err)
+		suite.Empty(statuses)
+	}
+}
+
+func (suite *SearchTestSuite) TestPrivateRepliesRemainCandidates() {
+	ctx := suite.T().Context()
+	requester := suite.testAccounts["local_account_1"]
+	status := suite.testStatuses["remote_account_1_status_1"]
+	status.Content = "uniqueprivatereply"
+	status.Visibility = gtsmodel.VisibilityDirect
+	status.InReplyToAccountID = requester.ID
+	suite.Require().NoError(suite.db.UpdateStatus(ctx, status, "content", "visibility", "in_reply_to_account_id"))
+	statuses, err := suite.db.SearchForStatuses(ctx, requester.ID, "uniqueprivatereply", "", "", "", 10, 0)
+	suite.Require().NoError(err)
+	suite.Require().Len(statuses, 1)
+	suite.Equal(status.ID, statuses[0].ID)
 }
 
 func TestSearchTestSuite(t *testing.T) {

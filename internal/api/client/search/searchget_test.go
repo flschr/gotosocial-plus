@@ -914,7 +914,7 @@ func (suite *SearchGetTestSuite) TestSearchAAny() {
 	}
 
 	suite.Len(searchResult.Accounts, 6)
-	suite.Len(searchResult.Statuses, 9)
+	suite.Len(searchResult.Statuses, 18)
 	suite.Len(searchResult.Hashtags, 0)
 }
 
@@ -957,7 +957,7 @@ func (suite *SearchGetTestSuite) TestSearchAAnyFollowingOnly() {
 	}
 
 	suite.Len(searchResult.Accounts, 2)
-	suite.Len(searchResult.Statuses, 9)
+	suite.Len(searchResult.Statuses, 18)
 	suite.Len(searchResult.Hashtags, 0)
 }
 
@@ -1000,7 +1000,7 @@ func (suite *SearchGetTestSuite) TestSearchAStatuses() {
 	}
 
 	suite.Len(searchResult.Accounts, 0)
-	suite.Len(searchResult.Statuses, 9)
+	suite.Len(searchResult.Statuses, 18)
 	suite.Len(searchResult.Hashtags, 0)
 }
 
@@ -1043,7 +1043,10 @@ func (suite *SearchGetTestSuite) TestSearchHiStatusesWithAccountIDInQueryParam()
 	}
 
 	suite.Len(searchResult.Accounts, 0)
-	suite.Len(searchResult.Statuses, 1)
+	suite.Len(searchResult.Statuses, 5)
+	for _, status := range searchResult.Statuses {
+		suite.Equal(suite.testAccounts["local_account_2"].ID, status.Account.ID)
+	}
 	suite.Len(searchResult.Hashtags, 0)
 }
 
@@ -1086,7 +1089,10 @@ func (suite *SearchGetTestSuite) TestSearchHiStatusesWithAccountIDInQueryText() 
 	}
 
 	suite.Len(searchResult.Accounts, 0)
-	suite.Len(searchResult.Statuses, 1)
+	suite.Len(searchResult.Statuses, 5)
+	for _, status := range searchResult.Statuses {
+		suite.Equal(suite.testAccounts["local_account_2"].ID, status.Account.ID)
+	}
 	suite.Len(searchResult.Hashtags, 0)
 }
 

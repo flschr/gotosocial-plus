@@ -260,7 +260,7 @@ func (s *searchDB) accountText(following bool) *bun.SelectQuery {
 //	SELECT "status"."id"
 //	FROM "statuses" AS "status"
 //	WHERE ("status"."boost_of_id" IS NULL)
-//	AND (("status"."account_id" = '01F8MH1H7YV1Z7D2C8K2730QBF') OR ("status"."in_reply_to_account_id" = '01F8MH1H7YV1Z7D2C8K2730QBF'))
+//	AND (("status"."account_id" = '01F8MH1H7YV1Z7D2C8K2730QBF') OR ("status"."in_reply_to_account_id" = '01F8MH1H7YV1Z7D2C8K2730QBF') OR ("status"."visibility" = 2))
 //	AND ("status"."id" < 'ZZZZZZZZZZZZZZZZZZZZZZZZZZ')
 //	AND ((SELECT "status"."content" || COALESCE("status"."content_warning", '') AS "status_text") LIKE '%hello%' ESCAPE '\')
 //	ORDER BY "status"."id" DESC LIMIT 10
@@ -292,12 +292,14 @@ func (s *searchDB) SearchForStatuses(
 		Column("status.id").
 		// Ignore boosts.
 		Where("? IS NULL", bun.Ident("status.boost_of_id")).
-		// Select only statuses created by
-		// accountID or replying to accountID.
+		// Search public posts in the local database as well as the requester's
+		// own posts and replies. Author indexability does not restrict this
+		// authenticated local search; API visibility checks still apply.
 		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
 			return q.
 				Where("? = ?", bun.Ident("status.account_id"), requestingAccountID).
-				WhereOr("? = ?", bun.Ident("status.in_reply_to_account_id"), requestingAccountID)
+				WhereOr("? = ?", bun.Ident("status.in_reply_to_account_id"), requestingAccountID).
+				WhereOr("? = ?", bun.Ident("status.visibility"), gtsmodel.VisibilityPublic)
 		})
 	if fromAccountID != "" {
 		q = q.Where("? = ?", bun.Ident("status.account_id"), fromAccountID)
