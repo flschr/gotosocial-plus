@@ -223,6 +223,14 @@ func (s *ProfileHistoryTestSuite) TestRedirectCannotResurrectDeletedStatus() {
 	s.Require().NoError(err)
 	s.True(stored.Flags.Deleted(), "historical content must never resurrect a locally deleted status")
 	s.Empty(stored.Content)
+	// Direct federation lookup through the same redirected alias must also
+	// preserve the canonical deletion, not just the profile-import shortcut.
+	_, _, err = s.dereferencer.GetStatusByURI(s.T().Context(), "", testrig.URLMustParse(alias))
+	s.NoError(err)
+	stored, err = s.db.GetStatusByID(s.T().Context(), old.ID)
+	s.Require().NoError(err)
+	s.True(stored.Flags.Deleted())
+	s.Empty(stored.Content)
 }
 
 func (s *ProfileHistoryTestSuite) TestFetchedModelCannotUndoConcurrentDelete() {
@@ -235,7 +243,10 @@ func (s *ProfileHistoryTestSuite) TestFetchedModelCannotUndoConcurrentDelete() {
 	statusable, err := ap.ResolveStatusable(s.T().Context(), io.NopCloser(strings.NewReader(string(body))))
 	s.Require().NoError(err)
 	s.Require().NoError(s.db.StubStatus(s.T().Context(), stale, true))
+	var surfaced atomic.Int32
+	s.dereferencer.OnStatusDereference = func(context.Context, *gtsmodel.Status, bool) error { surfaced.Add(1); return nil }
 	_, _, err = s.dereferencer.RefreshStatus(s.T().Context(), "", stale, statusable, nil)
+	s.Zero(surfaced.Load(), "deleted models must not emit a status update")
 	s.NoError(err)
 	stored, err := s.db.GetStatusByID(s.T().Context(), stale.ID)
 	s.Require().NoError(err)
