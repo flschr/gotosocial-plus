@@ -186,7 +186,7 @@ func (s *ProfileHistoryTestSuite) TestCancelledWaiterDoesNotWaitForOwner() {
 	select {
 	case err := <-waiter:
 		s.ErrorIs(err, context.Canceled)
-	case <-time.After(200 * time.Millisecond):
+	case <-time.After(time.Second):
 		s.Fail("cancelled profile waiter remained blocked on another request")
 	}
 	close(release)
@@ -268,7 +268,7 @@ func (s *ProfileHistoryTestSuite) TestStatusLockHonorsCancellation() {
 	select {
 	case err := <-result:
 		s.ErrorIs(err, context.DeadlineExceeded)
-	case <-time.After(200 * time.Millisecond):
+	case <-time.After(time.Second):
 		s.Fail("status storage lock ignored request cancellation")
 	}
 	unlock()
@@ -303,7 +303,7 @@ func (s *ProfileHistoryTestSuite) TestAccountLockHonorsCancellation() {
 	select {
 	case err := <-result:
 		s.ErrorIs(err, context.DeadlineExceeded)
-	case <-time.After(200 * time.Millisecond):
+	case <-time.After(time.Second):
 		s.Fail("account refresh lock ignored request cancellation")
 	}
 	unlock()

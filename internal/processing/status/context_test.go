@@ -18,6 +18,7 @@
 package status_test
 
 import (
+	"net/http"
 	"testing"
 
 	"code.superseriousbusiness.org/gotosocial/internal/ap"
@@ -352,9 +353,23 @@ func (suite *webContextGetTestSuite) TestUnauthenticatedRemoteContextDoesNotRefr
 	remote := suite.testStatuses["remote_account_1_status_1"]
 	suite.Require().NotNil(remote)
 
+	// This branch tests a visible public context. The shared remote fixture is
+	// unlisted and hidden from unauthenticated web viewers by default.
+	remote.Visibility = gtsmodel.VisibilityPublic
+	suite.Require().NoError(suite.db.UpdateStatus(ctx, remote, "visibility"))
 	before := suite.client.RequestCount(remote.URI)
 	_, err := suite.status.WebContextGet(ctx, remote.ID)
 	suite.Require().Nil(err)
+	suite.Equal(before, suite.client.RequestCount(remote.URI))
+}
+
+func (suite *webContextGetTestSuite) TestUnauthenticatedHiddenContextDoesNotRefresh() {
+	ctx := suite.T().Context()
+	remote := suite.testStatuses["remote_account_1_status_1"]
+	before := suite.client.RequestCount(remote.URI)
+	_, err := suite.status.WebContextGet(ctx, remote.ID)
+	suite.Require().NotNil(err)
+	suite.Equal(http.StatusUnauthorized, err.Code())
 	suite.Equal(before, suite.client.RequestCount(remote.URI))
 }
 
