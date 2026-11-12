@@ -80,6 +80,26 @@ The refresh uses normal federation and visibility rules. It does not provide
 access to private or otherwise unavailable posts, and a remote server can
 still return an incomplete conversation.
 
+## Remote profile history
+
+Opening a remote profile in an authenticated Mastodon-compatible client (such
+as Mona) attempts to import its latest public posts before returning the first
+page. The ActivityPub outbox must be available; servers may restrict or omit
+history, so a profile can still be incomplete.
+
+Each refresh examines at most 40 entries across four outbox pages, with a
+five-second deadline. Only public posts attributed to that profile are imported;
+boosts, unlisted posts, follower-only posts and direct messages are excluded.
+Normal API visibility and account filters still apply to the returned posts.
+The import uses the instance identity rather than the viewing user's identity.
+
+Successful refreshes are cached for ten minutes and failures for one minute in
+a bounded 1,000-profile cache. Simultaneous views of the same profile share the
+refresh, with at most four profiles refreshed concurrently. Existing history
+remains available if a remote server fails. Pagination, pinned-only requests,
+local profiles and unauthenticated requests do not initiate history imports.
+No configuration change or database migration is required.
+
 ## Link preview cards
 
 When enabled, GoToSocial Plus creates a Mastodon-compatible preview card for

@@ -136,6 +136,8 @@ type Dereferencer struct {
 
 	// recently attempted remote reply collection refreshes
 	threadContextRefreshes cache.Cache[string, threadContextRefresh]
+	profileRefreshes       cache.Cache[string, profileRefresh]
+	profileRefreshSlots    chan struct{}
 
 	// handshakes marks current in-progress handshakes
 	// occurring, useful to prevent a deadlock between
@@ -168,6 +170,8 @@ func NewDereferencer(
 		intFilter:              intFilter,
 		relayFilter:            relayFilter,
 		threadContextRefreshes: cache.New[string, threadContextRefresh](0, 1000),
+		profileRefreshes:       cache.New[string, profileRefresh](0, 1000),
+		profileRefreshSlots:    make(chan struct{}, 4),
 		handshakes:             make(map[string][]*url.URL),
 	}
 }

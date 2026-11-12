@@ -4,6 +4,16 @@ This changelog summarizes user-visible product features. Individual fixes,
 visual refinements, and internal implementation changes remain available in
 the Git history without becoming separate changelog entries.
 
+## Unreleased
+
+### Remote profile history
+
+- When an authenticated client opens a remote profile, try to import up to 40
+  available public posts from its ActivityPub outbox. Bound traversal and runtime,
+  cache refreshes, and keep existing history available on remote errors.
+- Exclude boosts and non-public posts; preserve account blocks and normal API
+  visibility rules. No database migration or configuration change is required.
+
 ## v0.22.1-plus.8 — 2026-10-03
 
 ### RSS feed updates reliably after new posts
