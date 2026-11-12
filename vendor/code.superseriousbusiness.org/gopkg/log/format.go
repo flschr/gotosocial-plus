@@ -34,6 +34,18 @@ func (f LogFormatted) String() string {
 	return str
 }
 
+// GoString: implements fmt.GoStringer{}.
+func (f LogFormatted) GoString() string {
+	verboseArgs := argArgs
+	verboseArgs.SetWithType()
+	verboseArgs.SetNoMethod()
+	buf := bufpool.Get()
+	buf.B = format.Global.Append(buf.B, f.any, verboseArgs)
+	str := string(buf.B)
+	bufpool.Put(buf)
+	return str
+}
+
 // Formatted wraps value in LogFormatted{}
 // for nicer formatting via String() method.
 func Formatted(v any) LogFormatted {

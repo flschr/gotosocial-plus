@@ -535,6 +535,14 @@ func (d *Dereferencer) enrichAccount(
 	account *gtsmodel.Account,
 	apubAcc ap.Accountable,
 ) (*gtsmodel.Account, ap.Accountable, error) {
+	// If provided, copy initial
+	// URI for later check.
+	var initialURI *url.URL
+	if uri != nil {
+		initialURI = new(url.URL)
+		*initialURI = *uri
+	}
+
 	// Pre-fetch a transport for requesting username, used by later deref procedures.
 	tsport, err := d.transportController.NewTransportForUsername(ctx, requestUser)
 	if err != nil {
@@ -762,22 +770,43 @@ func (d *Dereferencer) enrichAccount(
 
 	// Ensure the final parsed account URI matches
 	// the input URI we fetched (or received) it as.
-	if matches, err := util.URIMatches(
-		uri,
-		append(
-			ap.GetURL(apubAcc),      // account URL(s)
-			ap.GetJSONLDId(apubAcc), // account URI
-		)...,
-	); err != nil {
+	uris := append(
+		ap.GetURL(apubAcc),      // account URL(s)
+		ap.GetJSONLDId(apubAcc), // account URI
+	)
+	matches, err := util.URIMatches(uri, uris...)
+	if err != nil {
 		return nil, nil, gtserror.Newf(
 			"error checking account uri %s: %w",
 			latestAcc.URI, err,
 		)
-	} else if !matches {
+	}
+
+	if !matches {
 		return nil, nil, gtserror.Newf(
 			"account uri %s does not match %s",
 			latestAcc.URI, uri,
 		)
+	}
+
+	// We want final URI, URL,
+	// and initial URI (if provided)
+	// to all share the same host.
+	uris = append(uris, uri)
+	if initialURI != nil {
+		uris = append(uris, initialURI)
+	}
+
+	sameHost, err := util.SameHost(uris...)
+	if err != nil {
+		err := gtserror.Newf("error checking uri hosts %s: %w", latestAcc.URI, err)
+		return nil, nil, gtserror.SetMalformed(err)
+	}
+
+	if !sameHost {
+		// Different hosts across URIs. Return malformed error type.
+		err := gtserror.Newf("mismatch account URI hosts: %v", log.Formatted(uris))
+		return nil, nil, gtserror.SetMalformed(err)
 	}
 
 	// Ensure this isn't a local account,
