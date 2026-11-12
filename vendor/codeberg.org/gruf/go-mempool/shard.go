@@ -28,19 +28,20 @@ func (p *PoolShard[T]) Get() *T {
 }
 
 func (p *PoolShard[T]) Put(t *T) {
+	if t == nil {
+		return
+	}
 	if p.original != nil &&
 		p.original.Reset != nil &&
 		!p.original.Reset(t) {
 		return
 	}
 	ptr := unsafe.Pointer(t)
-	p.UnsafePoolShard.Put(ptr)
+	p.UnsafePoolShard.put(ptr)
 }
 
 // Original returns a reference to the shard's origin pool.
-func (p *PoolShard[T]) Original() *Pool[T] {
-	return p.original
-}
+func (p *PoolShard[T]) Original() *Pool[T] { return p.original }
 
 // UnsafePoolShard contains a reference to an original
 // UnsafePool, but with its own separate fast-access ring
@@ -61,15 +62,19 @@ type shard_internal struct {
 }
 
 func (s *UnsafePoolShard) Get() unsafe.Pointer {
-	pid := procPin()
-	ptr := s.ring.local(pid).Swap(nil)
+	_, _ = s.ring, s.pool.ring // nil checks before procPin()
 
-	if s.pool == nil || ptr != nil {
+	pid := procPin()
+	elem, pid := s.ring.local(pid)
+	ptr := elem.Swap(nil)
+
+	if ptr != nil {
 		procUnpin()
 		return ptr
 	}
 
-	ptr = s.pool.ring.local(pid).Swap(nil)
+	elem, _ = s.pool.ring.local(pid)
+	ptr = elem.Swap(nil)
 	procUnpin()
 
 	if ptr != nil {
@@ -84,15 +89,27 @@ func (s *UnsafePoolShard) Get() unsafe.Pointer {
 }
 
 func (s *UnsafePoolShard) Put(ptr unsafe.Pointer) {
-	pid := procPin()
-	ptr = s.ring.local(pid).Swap(ptr)
+	if ptr != nil {
+		// nil checks before procPin()
+		_, _ = s.ring, s.pool.ring
 
-	if s.pool == nil || ptr == nil {
+		// put ptr.
+		s.put(ptr)
+	}
+}
+
+func (s *UnsafePoolShard) put(ptr unsafe.Pointer) {
+	pid := procPin()
+	elem, pid := s.ring.local(pid)
+	ptr = elem.Swap(ptr)
+
+	if ptr == nil {
 		procUnpin()
 		return
 	}
 
-	ptr = s.pool.ring.local(pid).Swap(ptr)
+	elem, _ = s.pool.ring.local(pid)
+	ptr = elem.Swap(ptr)
 	procUnpin()
 
 	if ptr == nil {
@@ -100,14 +117,12 @@ func (s *UnsafePoolShard) Put(ptr unsafe.Pointer) {
 	}
 
 	s.pool.mutex.Lock()
-	s.pool.pool.Put(ptr)
+	s.pool.pool.put(ptr)
 	s.pool.mutex.Unlock()
 }
 
 // Original returns a reference to the shard's origin pool.
-func (s *UnsafePoolShard) Original() *UnsafePool {
-	return s.pool
-}
+func (s *UnsafePoolShard) Original() *UnsafePool { return s.pool }
 
 // Release will release resources of this particular shard.
 func (s *UnsafePoolShard) Release() { s.ring.clear() }

@@ -53,15 +53,18 @@ func (m *Module) AuthorizeGETHandler(c *gin.Context) {
 	// If it's not set, then we don't yet know
 	// yet who the user is, so send them to the
 	// sign in page first.
-	if userID, ok := s.Get(sessionUserID).(string); !ok || userID == "" {
+	userID, ok := s.Get(sessionUserID).(string)
+	if !ok || userID == "" {
 		m.redirectAuthFormToSignIn(c)
 		return
 	}
 
-	user := m.mustUserFromSession(c, s)
-	if user == nil {
-		// Error already
-		// written.
+	// Get user for given userID.
+	ctx := c.Request.Context()
+	user, err := m.state.DB.GetUserByID(ctx, userID)
+	if err != nil {
+		safe := "db error getting user " + userID
+		m.clearSessionWithInternalError(c, s, err, safe, oauth.HelpfulAdvice)
 		return
 	}
 
@@ -75,7 +78,7 @@ func (m *Module) AuthorizeGETHandler(c *gin.Context) {
 
 	// Everything looks OK.
 	// Start preparing to render the html template.
-	instance, errWithCode := m.processor.InstanceGetV1(c.Request.Context())
+	instance, errWithCode := m.processor.InstanceGetV1(ctx)
 	if errWithCode != nil {
 		apiutil.ErrorHandler(c, errWithCode, m.processor.InstanceGetV1)
 		return
@@ -164,7 +167,8 @@ func (m *Module) AuthorizePOSTHandler(c *gin.Context) {
 		return
 	}
 
-	user := m.mustUserFromSession(c, s)
+	// User must be fully authed.
+	user := m.mustUserFromSession(c, s, sessionUserID)
 	if user == nil {
 		// Error already
 		// written.

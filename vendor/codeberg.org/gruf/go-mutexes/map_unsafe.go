@@ -1,4 +1,4 @@
-//go:build go1.22 && !go1.27
+//go:build go1.22 && !go1.28
 
 package mutexes
 
@@ -29,7 +29,7 @@ func syncCond_last_ticket(c *sync.Cond) uint32 {
 	// NOTE: must remain in
 	// sync with sync.Cond{}.
 	type syncCond struct {
-		_ struct{}
+		_ struct{} // nocopy
 		L sync.Locker
 		n notifyList
 		// ... other fields

@@ -1,4 +1,4 @@
-//go:build go1.24 && !go1.27
+//go:build go1.24 && !go1.28
 
 package xunsafe
 
@@ -47,7 +47,7 @@ func ReflectIfaceElemFlags(ifaceFlags Reflect_flag, elemType reflect.Type) Refle
 		return 0
 	}
 	f := Reflect_flag(Abi_Type_Kind(elemType))
-	if Abi_Type_IfaceIndir(elemType) {
+	if !Abi_Type_IsDirectIface(elemType) {
 		f |= Reflect_flagIndir
 	}
 	if f != 0 {

@@ -99,3 +99,31 @@ func (suite *PunyTestSuite) TestMatches() {
 func TestPunyTestSuite(t *testing.T) {
 	suite.Run(t, new(PunyTestSuite))
 }
+
+func TestSameHostSecurityBoundary(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		uris []string
+		want bool
+	}{
+		{"same", []string{"https://example.org/users/a", "https://example.org/@a"}, true},
+		{"punycode", []string{"https://münchen.example/users/a", "https://xn--mnchen-3ya.example/@a"}, true},
+		{"foreign actor", []string{"https://example.org/note", "https://evil.example/users/a"}, false},
+		{"different port", []string{"https://example.org/note", "https://example.org:8443/users/a"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			uris := make([]*url.URL, len(tc.uris))
+			for i, raw := range tc.uris {
+				var err error
+				uris[i], err = url.Parse(raw)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := util.SameHost(uris...)
+			if err != nil || got != tc.want {
+				t.Fatalf("got %v, %v; want %v", got, err, tc.want)
+			}
+		})
+	}
+}

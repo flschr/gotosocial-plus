@@ -12,6 +12,9 @@ import (
 // Pool provides a form of SimplePool with the
 // addition of concurrency safety, and a fast-access
 // ring buffer to reduce main mutex contention.
+//
+// NOTE: the design inherits the
+// same caveats as UnsafePool{}.
 type Pool[T any] struct {
 	UnsafePool
 
@@ -65,6 +68,11 @@ func (p *Pool[T]) Shard() PoolShard[T] {
 // UnsafePool provides a form of UnsafeSimplePool with
 // the addition of concurrency safety, and a fast-access
 // ring buffer to reduce main mutex contention.
+//
+// IMPORTANT NOTE:
+// this pool is LOSSY, you cannot guarantee that
+// entries entered into the pool will always be
+// returned, they may be dropped for GC.
 type UnsafePool struct {
 	pool_internal
 	_ [cache_line_bytes - unsafe.Sizeof(pool_internal{})%cache_line_bytes]byte
@@ -117,8 +125,11 @@ func (p *pool_internal) Check(fn func(current, victim int) bool) func(current, v
 }
 
 func (p *pool_internal) Get() unsafe.Pointer {
+	_ = p.ring // nil check before procPin()
+
 	pid := procPin()
-	ptr := p.ring.local(pid).Swap(nil)
+	elem, _ := p.ring.local(pid)
+	ptr := elem.Swap(nil)
 	procUnpin()
 
 	if ptr != nil {
@@ -132,8 +143,20 @@ func (p *pool_internal) Get() unsafe.Pointer {
 }
 
 func (p *pool_internal) Put(ptr unsafe.Pointer) {
+	if ptr != nil {
+		// nil check
+		// before procPin()
+		_ = p.ring
+
+		// put ptr.
+		p.put(ptr)
+	}
+}
+
+func (p *pool_internal) put(ptr unsafe.Pointer) {
 	pid := procPin()
-	ptr = p.ring.local(pid).Swap(ptr)
+	elem, _ := p.ring.local(pid)
+	ptr = elem.Swap(ptr)
 	procUnpin()
 
 	if ptr == nil {
@@ -141,7 +164,7 @@ func (p *pool_internal) Put(ptr unsafe.Pointer) {
 	}
 
 	p.mutex.Lock()
-	p.pool.Put(ptr)
+	p.pool.put(ptr)
 	p.mutex.Unlock()
 }
 
@@ -153,7 +176,6 @@ func (p *pool_internal) GC() {
 }
 
 func (p *pool_internal) Size() (sz int) {
-	sz += p.ring.len()
 	p.mutex.Lock()
 	sz += p.pool.Size()
 	p.mutex.Unlock()
@@ -172,9 +194,9 @@ func (p *pool_internal) Size() (sz int) {
 // atomic read / write to a particular pointer_elem.
 type locals_ring struct{ p unsafe.Pointer }
 
-// local returns an atomic_pointer from the fast-access
-// ring buffer for the given goroutine PID index.
-func (r *locals_ring) local(pid uint) *pointer_elem {
+// local returns an atomic_pointer from the fast-access ring buffer for given goroutine PID,
+// returns pointer_elem{} and currently pinned goroutine PID (in case of repinning on alloc).
+func (r *locals_ring) local(pid uint) (*pointer_elem, uint) {
 	for {
 		// Load current ring from ptr.
 		ptr := atomic.LoadPointer(&r.p)
@@ -183,7 +205,7 @@ func (r *locals_ring) local(pid uint) *pointer_elem {
 			// Check if pid within ring length.
 			ring := *(*[]pointer_elem)(ptr)
 			if pid < uint(len(ring)) {
-				return &ring[pid]
+				return &ring[pid], pid
 			}
 		}
 
@@ -195,7 +217,8 @@ func (r *locals_ring) local(pid uint) *pointer_elem {
 
 		// Allocate new ring buffer capable
 		// of accomodating an index of 'pid'.
-		ring := make([]pointer_elem, maxprocs())
+		maxprocs := runtime.GOMAXPROCS(0)
+		ring := make([]pointer_elem, maxprocs)
 		newptr := unsafe.Pointer(&ring)
 
 		// Repin and get a (potentially)
@@ -207,19 +230,10 @@ func (r *locals_ring) local(pid uint) *pointer_elem {
 		if pid < uint(len(ring)) &&
 			atomic.CompareAndSwapPointer(&r.p,
 				ptr,
-				newptr,
-			) {
-			return &ring[pid]
+				newptr) {
+			return &ring[pid], pid
 		}
 	}
-}
-
-// len returns ring buffer length.
-func (r *locals_ring) len() int {
-	if ptr := atomic.LoadPointer(&r.p); ptr != nil {
-		return len(*(*[]pointer_elem)(ptr))
-	}
-	return 0
 }
 
 // clear will drop the current pointer to ring buffer.
@@ -227,23 +241,13 @@ func (r *locals_ring) clear() { atomic.StorePointer(&r.p, nil) }
 
 // pointer_elem wraps an unsafe.Pointer to make
 // swapping of a slice element nicer on the eyes.
-//
-// THIS IS THE TRUE VIBE CODING, NONE OF THAT LLM
-// DOG-ARSE BULLSHIT. WRITE CODE WITH *NICE VIBES*.
 type pointer_elem struct{ p unsafe.Pointer }
 
-func (p *pointer_elem) Swap(new unsafe.Pointer) unsafe.Pointer {
-	old := p.p
-	p.p = new
-	return old
+func (e *pointer_elem) Swap(p unsafe.Pointer) unsafe.Pointer {
+	o := e.p
+	e.p = p
+	return o
 }
-
-// maxprocs prevents runtime.GOMAXPROCS() from
-// being inlined, making it more likely for its
-// caller to be capable of being inlined.
-//
-//go:noinline
-func maxprocs() int { return runtime.GOMAXPROCS(0) }
 
 // note is int in runtime, but should never be negative.
 //

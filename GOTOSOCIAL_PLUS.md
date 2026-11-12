@@ -242,3 +242,10 @@ Search limits apply to visible results. Blocked, suspended, deleted and pending
 candidates do not displace eligible matches; remaining visibility exclusions
 are handled by fetching subsequent candidate batches within a five-second
 search budget. Upward and downward pages retain descending result order.
+## Upstream security baseline
+
+Development builds incorporate upstream v0.22.3, including the v0.22.2 two-factor
+authentication fix and stricter URI host validation during federation. Build with
+Go 1.26.10 or newer. The existing `plus/v0.22.1` branch remains the integration
+branch; artifact versions now use the actual `0.22.3` upstream baseline. Updating
+from v0.22.x requires no upstream schema migration or configuration change.
