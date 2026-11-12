@@ -84,6 +84,40 @@ func SetOutput(fn func(lvl LEVEL, line []byte)) {
 	state.output = fn
 }
 
+// SetOutputCLI prepares the logger for more CLI command oriented
+// logging. It replaces output func to output all levelled logging
+// to stderr, and UNSET (i.e. Printf etc) to stdout. It also updates
+// the formatting func to drop timestamp and caller on UNSET entries.
+func SetOutputCLI() {
+	state.format = (format.CLI{FormatFunc: state.format}).Format
+	state.output = func(lvl level.LEVEL, line []byte) {
+		if lvl == UNSET {
+			_, _ = os.Stdout.Write(line)
+		} else {
+			_, _ = os.Stderr.Write(line)
+		}
+	}
+}
+
+// ExtractFields extracts logging fields from given
+// context, nil context is supported and a no-op.
+func ExtractFields(ctx context.Context) []kv.Field {
+	if ctx != nil && len(state.hooks) > 0 {
+
+		// Allocate fields slice for our context hooks.
+		fields := make([]kv.Field, 0, len(state.hooks))
+
+		// Pass context through our hooks.
+		for _, hook := range state.hooks {
+			fields = hook(ctx, fields)
+		}
+
+		return fields
+	}
+
+	return nil
+}
+
 // New starts a new log entry.
 func New() Entry {
 	return Entry{}
@@ -399,7 +433,8 @@ func logf(ctx context.Context, lvl LEVEL, fields []kv.Field, msg string, args ..
 	defer bufpool.Put(buf)
 
 	if ctx != nil && len(state.hooks) > 0 {
-		// Ensure fields have space for our context hooks.
+
+		// Ensure fields slice has space for context hooks.
 		fields = xslices.GrowJust(fields, len(state.hooks))
 
 		// Pass context through our hooks.

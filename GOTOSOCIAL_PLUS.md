@@ -251,3 +251,11 @@ upstream release line. When updating upstream:
 The frontend build must run `yarn ts-patch install` after installing packages
 and before `yarn build`. Always deploy the binary, `web/assets`, and
 `web/template` from the same archive.
+
+## Upstream security baseline
+
+Development builds incorporate upstream v0.22.3, including the v0.22.2 two-factor
+authentication fix and stricter URI host validation during federation. Build with
+Go 1.26.10 or newer. The existing `plus/v0.22.1` branch remains the integration
+branch; artifact versions now use the actual `0.22.3` upstream baseline. Updating
+from v0.22.x requires no upstream schema migration or configuration change.

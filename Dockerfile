@@ -11,7 +11,7 @@ RUN yarn --cwd ./web/source install && \
     rm -rf ./web/source
 
 # stage 2: build the executor container
-FROM --platform=${TARGETPLATFORM} alpine:3.21 AS executor
+FROM --platform=${TARGETPLATFORM} alpine:3.24 AS executor
 
 # switch to non-root user:group for GtS
 USER 1000:1000
