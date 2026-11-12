@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"code.superseriousbusiness.org/gotosocial/internal/ap"
 	"code.superseriousbusiness.org/gotosocial/internal/federation/dereferencing"
 	"code.superseriousbusiness.org/gotosocial/internal/gtsmodel"
 	"code.superseriousbusiness.org/gotosocial/internal/id"
@@ -159,6 +160,123 @@ func (s *ProfileHistoryTestSuite) TestCancellationAndBackoff() {
 	before := calls.Load()
 	s.NoError(s.dereferencer.RefreshAccountOutbox(s.T().Context(), a))
 	s.Equal(before, calls.Load(), "a timed out refresh must be backed off")
+}
+
+func (s *ProfileHistoryTestSuite) TestCancelledWaiterDoesNotWaitForOwner() {
+	a := s.testAccounts["remote_account_1"]
+	started, release := make(chan struct{}), make(chan struct{})
+	fallback := s.client
+	client := testrig.NewMockHTTPClient(func(req *http.Request) (*http.Response, error) {
+		if req.URL.String() != a.OutboxURI {
+			return fallback.Do(req)
+		}
+		close(started)
+		<-release
+		body, _ := json.Marshal(historyCollection())
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/activity+json"}}, Body: io.NopCloser(strings.NewReader(string(body))), ContentLength: int64(len(body)), Request: req}, nil
+	}, "")
+	s.dereferencer = dereferencing.NewDereferencer(&s.state, s.converter, testrig.NewTestTransportController(&s.state, client), s.visFilter, s.intFilter, s.relayFilter, s.media)
+	owner := make(chan error, 1)
+	go func() { owner <- s.dereferencer.RefreshAccountOutbox(s.T().Context(), a) }()
+	<-started
+	ctx, cancel := context.WithCancel(s.T().Context())
+	waiter := make(chan error, 1)
+	go func() { waiter <- s.dereferencer.RefreshAccountOutbox(ctx, a) }()
+	cancel()
+	select {
+	case err := <-waiter:
+		s.ErrorIs(err, context.Canceled)
+	case <-time.After(200 * time.Millisecond):
+		s.Fail("cancelled profile waiter remained blocked on another request")
+	}
+	close(release)
+	s.NoError(<-owner)
+}
+
+func (s *ProfileHistoryTestSuite) TestRedirectCannotResurrectDeletedStatus() {
+	a := s.testAccounts["remote_account_1"]
+	old, err := s.db.GetStatusByID(s.T().Context(), testrig.NewTestStatuses()["remote_account_1_status_1"].ID)
+	s.Require().NoError(err)
+	s.Require().NoError(s.db.StubStatus(s.T().Context(), old, true))
+	alias := old.URI + "?history=alias"
+	note := historyNote(a, "unused")
+	note["id"], note["published"] = old.URI, old.CreatedAt.UTC().Format(time.RFC3339)
+	fallback := s.client
+	client := testrig.NewMockHTTPClient(func(req *http.Request) (*http.Response, error) {
+		var document any
+		final := req.URL
+		switch req.URL.String() {
+		case a.OutboxURI:
+			document = historyCollection(alias)
+		case alias:
+			document = note
+			final = testrig.URLMustParse(old.URI)
+		default:
+			return fallback.Do(req)
+		}
+		body, _ := json.Marshal(document)
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/activity+json"}}, Body: io.NopCloser(strings.NewReader(string(body))), ContentLength: int64(len(body)), Request: &http.Request{URL: final}}, nil
+	}, "")
+	s.dereferencer = dereferencing.NewDereferencer(&s.state, s.converter, testrig.NewTestTransportController(&s.state, client), s.visFilter, s.intFilter, s.relayFilter, s.media)
+	s.NoError(s.dereferencer.RefreshAccountOutbox(s.T().Context(), a))
+	stored, err := s.db.GetStatusByID(s.T().Context(), old.ID)
+	s.Require().NoError(err)
+	s.True(stored.Flags.Deleted(), "historical content must never resurrect a locally deleted status")
+	s.Empty(stored.Content)
+}
+
+func (s *ProfileHistoryTestSuite) TestFetchedModelCannotUndoConcurrentDelete() {
+	a := s.testAccounts["remote_account_1"]
+	stale, err := s.db.GetStatusByID(s.T().Context(), testrig.NewTestStatuses()["remote_account_1_status_1"].ID)
+	s.Require().NoError(err)
+	note := historyNote(a, "unused")
+	note["id"], note["published"] = stale.URI, stale.CreatedAt.UTC().Format(time.RFC3339)
+	body, _ := json.Marshal(note)
+	statusable, err := ap.ResolveStatusable(s.T().Context(), io.NopCloser(strings.NewReader(string(body))))
+	s.Require().NoError(err)
+	s.Require().NoError(s.db.StubStatus(s.T().Context(), stale, true))
+	_, _, err = s.dereferencer.RefreshStatus(s.T().Context(), "", stale, statusable, nil)
+	s.NoError(err)
+	stored, err := s.db.GetStatusByID(s.T().Context(), stale.ID)
+	s.Require().NoError(err)
+	s.True(stored.Flags.Deleted())
+	s.Empty(stored.Content)
+}
+
+func (s *ProfileHistoryTestSuite) TestStatusLockHonorsCancellation() {
+	stale, err := s.db.GetStatusByID(s.T().Context(), testrig.NewTestStatuses()["remote_account_1_status_1"].ID)
+	s.Require().NoError(err)
+	body, _ := json.Marshal(historyNote(s.testAccounts["remote_account_1"], "unused"))
+	statusable, err := ap.ResolveStatusable(s.T().Context(), io.NopCloser(strings.NewReader(string(body))))
+	s.Require().NoError(err)
+	unlock := s.state.FedLocks.Lock(stale.URI)
+	ctx, cancel := context.WithTimeout(s.T().Context(), 30*time.Millisecond)
+	defer cancel()
+	result := make(chan error, 1)
+	go func() { _, _, err := s.dereferencer.RefreshStatus(ctx, "", stale, statusable, nil); result <- err }()
+	select {
+	case err := <-result:
+		s.ErrorIs(err, context.DeadlineExceeded)
+	case <-time.After(200 * time.Millisecond):
+		s.Fail("status storage lock ignored request cancellation")
+	}
+	unlock()
+}
+
+func (s *ProfileHistoryTestSuite) TestSuspendedAccountDoesNotFetch() {
+	a := s.testAccounts["remote_account_1"]
+	a.SuspendedAt = time.Now()
+	calls := s.historyClient(map[string]any{a.OutboxURI: historyCollection()})
+	s.NoError(s.dereferencer.RefreshAccountOutbox(s.T().Context(), a))
+	s.Zero(calls.Load())
+}
+func (s *ProfileHistoryTestSuite) TestBlockedAccountDomainDoesNotFetch() {
+	a := s.testAccounts["remote_account_1"]
+	a.Domain = "account-alias.example"
+	s.Require().NoError(s.db.PutDomainBlock(s.T().Context(), &gtsmodel.DomainBlock{ID: id.NewULID(), Domain: a.Domain, CreatedByAccountID: s.testAccounts["admin_account"].ID}))
+	calls := s.historyClient(map[string]any{a.OutboxURI: historyCollection()})
+	s.NoError(s.dereferencer.RefreshAccountOutbox(s.T().Context(), a))
+	s.Zero(calls.Load())
 }
 
 func TestProfileHistory(t *testing.T) { suite.Run(t, new(ProfileHistoryTestSuite)) }

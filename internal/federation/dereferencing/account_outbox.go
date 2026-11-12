@@ -32,7 +32,9 @@ const (
 // never import a personalized follower-only outbox into the shared cache.
 // Callers must authenticate and check account blocks before calling this.
 func (d *Dereferencer) RefreshAccountOutbox(ctx context.Context, account *gtsmodel.Account) error {
-	if account.Domain == "" || account.OutboxURI == "" {
+	ctx, cancel := context.WithTimeout(ctx, profileTimeout)
+	defer cancel()
+	if account.Domain == "" || account.OutboxURI == "" || account.IsSuspended() {
 		return nil
 	}
 	actor, err := url.Parse(account.URI)
@@ -43,17 +45,34 @@ func (d *Dereferencer) RefreshAccountOutbox(ctx context.Context, account *gtsmod
 	if err != nil || !profileURIAllowed(outbox, actor) {
 		return fmt.Errorf("invalid outbox URI")
 	}
+	if account.Domain != actor.Hostname() {
+		if blocked, err := d.state.DB.IsDomainBlocked(ctx, account.Domain); err != nil {
+			return err
+		} else if blocked {
+			return nil
+		}
+	}
 	if blocked, err := d.state.DB.IsDomainBlocked(ctx, actor.Hostname()); err != nil {
 		return err
 	} else if blocked {
 		return nil
 	}
 
-	// The same lock also coalesces requests from simultaneous profile tabs.
-	unlock := d.state.FedLocks.Lock("profile-outbox:" + account.URI)
-	defer unlock()
+	// Keep ownership of each in-flight refresh separate from federation model
+	// locks. Waiters must be able to leave immediately when their request ends.
+	d.profileRefreshMu.Lock()
 	if err := ctx.Err(); err != nil {
+		d.profileRefreshMu.Unlock()
 		return err
+	}
+	if done, ok := d.profileInFlight[account.URI]; ok {
+		d.profileRefreshMu.Unlock()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-done:
+			return nil
+		}
 	}
 	now := time.Now()
 	if refresh, ok := d.profileRefreshes.Get(account.URI); ok {
@@ -62,18 +81,26 @@ func (d *Dereferencer) RefreshAccountOutbox(ctx context.Context, account *gtsmod
 			ttl = 10 * time.Minute
 		}
 		if now.Sub(refresh.at) < ttl {
+			d.profileRefreshMu.Unlock()
 			return nil
 		}
 	}
-	// Bound total concurrent history work as well as each individual traversal.
 	select {
 	case d.profileRefreshSlots <- struct{}{}:
 	default:
+		d.profileRefreshMu.Unlock()
 		return fmt.Errorf("profile refresh capacity reached")
 	}
-	defer func() { <-d.profileRefreshSlots }()
-	ctx, cancel := context.WithTimeout(ctx, profileTimeout)
-	defer cancel()
+	done := make(chan struct{})
+	d.profileInFlight[account.URI] = done
+	d.profileRefreshMu.Unlock()
+	defer func() {
+		d.profileRefreshMu.Lock()
+		delete(d.profileInFlight, account.URI)
+		<-d.profileRefreshSlots
+		close(done)
+		d.profileRefreshMu.Unlock()
+	}()
 	err = d.fetchAccountOutbox(ctx, account, actor, outbox)
 	d.profileRefreshes.Set(account.URI, profileRefresh{at: time.Now(), success: err == nil})
 	return err
@@ -183,8 +210,19 @@ func (d *Dereferencer) importProfileStatus(ctx context.Context, account *gtsmode
 	if err != nil {
 		return err
 	}
+	if existing != nil || !profileURIAllowed(canonical, actor) {
+		return nil
+	}
+	// The canonical ID can already be stored even when the fetched alias was not.
+	stored, err := d.getStatusFromDB(ctx, canonical.String())
+	if err != nil {
+		return err
+	}
+	if stored != nil {
+		return nil
+	}
 	author, err := ap.GetOneAttributedTo(statusable)
-	if err != nil || author.String() != account.URI || !profileURIAllowed(canonical, actor) {
+	if err != nil || author.String() != account.URI {
 		return nil
 	}
 	visibility, err := ap.ExtractVisibility(statusable, account.FollowersURI)

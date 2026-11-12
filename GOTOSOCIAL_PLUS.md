@@ -100,6 +100,11 @@ remains available if a remote server fails. Pagination, pinned-only requests,
 local profiles and unauthenticated requests do not initiate history imports.
 No configuration change or database migration is required.
 
+Remote profile refresh waiters honor their own request cancellation, including
+while waiting for status storage locks. Existing canonical statuses discovered
+through aliases are left unchanged; a concurrent Delete wins over older fetched
+or pushed representations and cannot be undone by historical imports.
+
 ## Link preview cards
 
 When enabled, GoToSocial Plus creates a Mastodon-compatible preview card for

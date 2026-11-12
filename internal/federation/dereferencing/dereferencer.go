@@ -138,6 +138,8 @@ type Dereferencer struct {
 	threadContextRefreshes cache.Cache[string, threadContextRefresh]
 	profileRefreshes       cache.Cache[string, profileRefresh]
 	profileRefreshSlots    chan struct{}
+	profileRefreshMu       sync.Mutex
+	profileInFlight        map[string]chan struct{}
 
 	// handshakes marks current in-progress handshakes
 	// occurring, useful to prevent a deadlock between
@@ -172,6 +174,7 @@ func NewDereferencer(
 		threadContextRefreshes: cache.New[string, threadContextRefresh](0, 1000),
 		profileRefreshes:       cache.New[string, profileRefresh](0, 1000),
 		profileRefreshSlots:    make(chan struct{}, 4),
+		profileInFlight:        make(map[string]chan struct{}),
 		handshakes:             make(map[string][]*url.URL),
 	}
 }
