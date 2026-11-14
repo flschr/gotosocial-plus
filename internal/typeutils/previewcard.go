@@ -215,7 +215,7 @@ func (c *Converter) fetchPreviewCard(ctx context.Context, target *url.URL) (*mod
 		return nil, fmt.Errorf("preview response exceeds %d bytes", previewCardMaxHTML)
 	}
 
-	return parsePreviewCard(target, body)
+	return parsePreviewCard(target, body, contentType)
 }
 
 func (c *Converter) fetchYouTubePreviewCard(ctx context.Context, target *url.URL) (*model.Card, error) {

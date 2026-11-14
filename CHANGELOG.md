@@ -16,6 +16,12 @@ GoToSocial Plus 9 brings upstream security fixes, better remote profile browsing
 - **Choose which applications crosspost to Bluesky.** Crosspost eligible public posts from all applications or restrict crossposting to selected publishers.
 - **Improved profile layout:** the Follow button stays aligned correctly when no Bluesky follow link is shown.
 
+### Fixes
+
+- Avoid endless preview-image loading indicators in clients such as Ivory when a linked page has no image. Missing image and blurhash fields are now returned as null.
+- Respect webpage character encodings in preview titles and descriptions, fixing broken umlauts and other non-ASCII characters.
+- Thanks to Jürgen (@jyrgi66) for reporting and contributing both preview-card fixes (#30, #31).
+
 ### Upgrade notes
 
 - This release includes additive database migrations for the Bluesky application filter.
