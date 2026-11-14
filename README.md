@@ -15,11 +15,15 @@ publishing improvements used by
 
 - **Native Bluesky integration:** connect an existing Bluesky account,
   crosspost eligible public posts, receive replies and mentions, and answer
-  them from Mastodon-compatible clients.
+  them from Mastodon-compatible clients. Optionally restrict automatic
+  crossposting to selected publishing applications.
 - **Native quote posts:** create, display, count, approve, reject, and revoke
   Mastodon-compatible quotes with ActivityPub interaction-policy enforcement.
 - **Complete remote conversations:** refresh available ActivityPub context
   when opening a thread so older and remote replies appear more reliably.
+- **Remote profile history and local search:** load available public history
+  when opening remote profiles in authenticated clients and search public
+  posts already stored on the instance.
 - **Cleaner timelines:** optional link previews, native handling of redundant
   quote fallbacks, compact Bluesky replies, and suppression of profile cards
   created only by mentions.
@@ -42,7 +46,7 @@ Ready-to-run Linux AMD64 archives are published on the
 [GitHub Releases page](https://github.com/flschr/gotosocial-plus/releases).
 Release names follow `v<GoToSocial version>-plus.<Plus release>`.
 
-GoToSocial Plus currently tracks GoToSocial 0.22.1. Always read the upstream
+GoToSocial Plus currently tracks GoToSocial 0.22.3. Always read the upstream
 release and migration notes before upgrading.
 
 A release archive contains the binary, compiled web assets, templates,

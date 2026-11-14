@@ -32,6 +32,14 @@ Each user can optionally connect an existing Bluesky account. GoToSocial Plus
 can then publish eligible original public posts to Bluesky with text, links,
 up to four images, and available alt text.
 
+By default, automatic crossposting accepts eligible posts from all publishing
+applications. Under **GoToSocial Plus → Bluesky**, users can instead enable
+application filtering and select which publishers may crosspost. An enabled
+filter with no selected applications prevents new automatic crossposts.
+Changing the filter does not remove existing Bluesky posts or disable the
+private reply channel. Existing mapped posts retain their normal edit and
+delete lifecycle. The selection is checked again when queued posts are delivered.
+
 Users can authenticate with OAuth or with a separate, revocable Bluesky app
 password. App passwords are stored encrypted and let GoToSocial create a new
 session automatically after the current access and refresh tokens expire.
@@ -128,6 +136,11 @@ Preview handling:
 - caches successful results for 24 hours and misses for one hour;
 - warms previews for older and remote posts in the background; and
 - uses validated YouTube metadata with a `youtube-nocookie.com` player.
+
+Preview metadata respects the page's character encoding, including HTTP
+headers, HTML declarations, and byte-order marks. Missing image and blurhash
+values are exposed as `null` in the client API, avoiding empty-image loading
+placeholders in clients such as Ivory.
 
 Sensitive posts never trigger preview requests. External preview images are
 referenced rather than copied into local storage, so the image host can still
@@ -275,9 +288,10 @@ Search limits apply to visible results. Blocked, suspended, deleted and pending
 candidates do not displace eligible matches; remaining visibility exclusions
 are handled by fetching subsequent candidate batches within a five-second
 search budget. Upward and downward pages retain descending result order.
+
 ## Upstream security baseline
 
-Development builds incorporate upstream v0.22.3, including the v0.22.2 two-factor
+GoToSocial Plus 9 is based on upstream v0.22.3, including the v0.22.2 two-factor
 authentication fix and stricter URI host validation during federation. Build with
 Go 1.26.10 or newer. The existing `plus/v0.22.1` branch remains the integration
 branch; artifact versions now use the actual `0.22.3` upstream baseline. Updating
