@@ -4,15 +4,24 @@ This changelog summarizes user-visible product features. Individual fixes,
 visual refinements, and internal implementation changes remain available in
 the Git history without becoming separate changelog entries.
 
-## Unreleased
+## v0.22.3-plus.9 — 2026-11-14
 
-### Remote profile history
+GoToSocial Plus 9 brings upstream security fixes, better remote profile browsing, broader search, and more control over Bluesky crossposting.
 
-- When an authenticated client opens a remote profile, try to import up to 40
-  available public posts from its ActivityPub outbox. Bound traversal and runtime,
-  cache refreshes, and keep existing history available on remote errors.
-- Exclude boosts and non-public posts; preserve account blocks and normal API
-  visibility rules. No database migration or configuration change is required.
+### What's new
+
+- **Updated to GoToSocial 0.22.3**, including upstream security fixes.
+- **More posts on remote profiles:** opening a remote profile from an authenticated client can now load older public posts, where the originating server permits access. Imports are bounded to 40 posts per refresh.
+- **Search public posts already stored on your instance**, including posts from other accounts, through authenticated Mastodon-compatible clients.
+- **Choose which applications crosspost to Bluesky.** Crosspost eligible public posts from all applications or restrict crossposting to selected publishers.
+- **Improved profile layout:** the Follow button stays aligned correctly when no Bluesky follow link is shown.
+
+### Upgrade notes
+
+- This release includes additive database migrations for the Bluesky application filter.
+- Application filtering is disabled by default, preserving existing crossposting behavior.
+- Remote profile history depends on the originating server and may be incomplete. Existing history remains available when a remote server cannot be reached.
+- Deploy the binary, web assets, and templates from the same release archive.
 
 ## v0.22.1-plus.8 — 2026-10-03
 
