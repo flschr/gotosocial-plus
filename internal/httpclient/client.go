@@ -50,6 +50,37 @@ var (
 	ErrReservedAddr = errors.New("dial within blocked / reserved IP range")
 )
 
+type retryAfterError struct {
+	err   error
+	after time.Duration
+}
+
+func (e *retryAfterError) Error() string { return e.err.Error() }
+func (e *retryAfterError) Unwrap() error { return e.err }
+
+// RetryAfter returns the delay requested by a temporary HTTP response, when
+// the remote server supplied a valid Retry-After header.
+func RetryAfter(err error) (time.Duration, bool) {
+	var retry *retryAfterError
+	if !errors.As(err, &retry) || retry.after <= 0 {
+		return 0, false
+	}
+	return retry.after, true
+}
+
+func retryAfterDuration(value string, now time.Time) (time.Duration, bool) {
+	if value == "" {
+		return 0, false
+	}
+	if seconds, err := strconv.ParseUint(value, 10, 32); err == nil && seconds > 0 {
+		return time.Duration(seconds) * time.Second, true // #nosec G115 -- parsed as uint32 above.
+	}
+	if at, err := http.ParseTime(value); err == nil && at.After(now) {
+		return at.Sub(now), true
+	}
+	return 0, false
+}
+
 // Config provides configuration details for setting up a new
 // instance of httpclient.Client{}. Within are a subset of the
 // configuration values passed to initialized http.Transport{}
@@ -364,18 +395,11 @@ func (c *Client) do(r *Request) (rsp *http.Response, retry bool, err error) {
 		err = fmt.Errorf(`http response: %s`, rsp.Status)
 
 		// Search for a provided "Retry-After" header value.
-		if after := rsp.Header.Get("Retry-After"); after != "" {
-
-			// Get cur time.
-			now := time.Now()
-
-			if u, _ := strconv.ParseUint(after, 10, 32); u != 0 {
-				// An integer no. of backoff seconds was provided.
-				r.backoff = time.Duration(u) * time.Second // #nosec G115 -- We clamp backoff below.
-			} else if at, _ := http.ParseTime(after); !at.Before(now) {
-				// An HTTP formatted future date-time was provided.
-				r.backoff = at.Sub(now)
-			}
+		if after, ok := retryAfterDuration(rsp.Header.Get("Retry-After"), time.Now()); ok {
+			// Preserve the server's full requested delay for callers that cache a
+			// temporary miss, while keeping the immediate retry loop bounded.
+			err = &retryAfterError{err: err, after: after}
+			r.backoff = after
 
 			// Don't let their provided backoff exceed our max.
 			if max := baseBackoff * time.Duration(c.retries); // #nosec G115 -- We control c.retries.

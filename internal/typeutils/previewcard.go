@@ -18,6 +18,7 @@ import (
 	"code.superseriousbusiness.org/gotosocial/internal/config"
 	"code.superseriousbusiness.org/gotosocial/internal/gtscontext"
 	"code.superseriousbusiness.org/gotosocial/internal/gtsmodel"
+	"code.superseriousbusiness.org/gotosocial/internal/httpclient"
 	"golang.org/x/net/html"
 )
 
@@ -89,7 +90,7 @@ func (c *Converter) fetchAndCachePreviewCard(ctx context.Context, key string, ca
 	ttl := previewCardTTL
 	if err != nil || card == nil {
 		card = nil
-		ttl = previewCardMissTTL
+		ttl = previewCardMissTTLForError(err)
 	}
 
 	c.previewCards.Store(key, previewCardCacheEntry{
@@ -97,6 +98,18 @@ func (c *Converter) fetchAndCachePreviewCard(ctx context.Context, key string, ca
 		expiresAt: time.Now().Add(ttl),
 	})
 	return card
+}
+
+func previewCardMissTTLForError(err error) time.Duration {
+	after, _ := httpclient.RetryAfter(err)
+	return previewCardMissTTLForRetryAfter(after)
+}
+
+func previewCardMissTTLForRetryAfter(after time.Duration) time.Duration {
+	if after <= previewCardMissTTL {
+		return previewCardMissTTL
+	}
+	return min(after, previewCardTTL)
 }
 
 func firstPreviewCardURL(content string, excludedURLs map[string]struct{}) *url.URL {
