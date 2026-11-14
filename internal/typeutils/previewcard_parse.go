@@ -5,6 +5,7 @@
 package typeutils
 
 import (
+	"bytes"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 
 	"code.superseriousbusiness.org/gotosocial/internal/api/model"
 	"golang.org/x/net/html"
+	"golang.org/x/net/html/charset"
 )
 
 type youtubeOEmbed struct {
@@ -23,8 +25,16 @@ type youtubeOEmbed struct {
 	ThumbnailHeight int    `json:"thumbnail_height"`
 }
 
-func parsePreviewCard(target *url.URL, body []byte) (*model.Card, error) {
-	doc, err := html.Parse(strings.NewReader(string(body)))
+func parsePreviewCard(target *url.URL, body []byte, contentType string) (*model.Card, error) {
+	// Decode the document to UTF-8 based on BOM, the Content-Type
+	// header or a <meta charset> declaration, so that pages served
+	// as e.g. ISO-8859-1 don't end up with mangled non-ASCII text.
+	reader, err := charset.NewReader(bytes.NewReader(body), contentType)
+	if err != nil {
+		return nil, err
+	}
+
+	doc, err := html.Parse(reader)
 	if err != nil {
 		return nil, err
 	}

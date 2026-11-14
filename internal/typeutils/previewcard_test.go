@@ -74,7 +74,7 @@ func TestParsePreviewCard(t *testing.T) {
 		<meta property="og:image:height" content="630">
 	</head></html>`)
 
-	card, err := parsePreviewCard(target, body)
+	card, err := parsePreviewCard(target, body, "")
 	require.NoError(t, err)
 	require.Equal(t, "https://example.org/articles/one", card.URL)
 	require.Equal(t, "A useful article", card.Title)
@@ -83,6 +83,37 @@ func TestParsePreviewCard(t *testing.T) {
 	require.Equal(t, "https://example.org/preview.jpg", card.Image)
 	require.Equal(t, 1200, card.Width)
 	require.Equal(t, 630, card.Height)
+}
+
+func TestParsePreviewCardLatin1(t *testing.T) {
+	target, err := url.Parse("https://example.org/articles/one")
+	require.NoError(t, err)
+
+	// "Fake-Date-Überfall" / "19-Jähriger über" encoded as ISO-8859-1.
+	title := "Fake-Date-\xdcberfall"
+	description := "19-J\xe4hriger \xfcber"
+
+	for name, tc := range map[string]struct {
+		contentType string
+		head        string
+	}{
+		"header":                {contentType: "text/html; charset=iso-8859-1"},
+		"meta":                  {contentType: "text/html", head: `<meta charset="iso-8859-1">`},
+		"http-equiv":            {head: `<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">`},
+		"header overrides meta": {contentType: "text/html; charset=iso-8859-1", head: `<meta charset="utf-8">`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			body := []byte(`<!doctype html><html><head>` + tc.head +
+				`<meta property="og:title" content="` + title + `">` +
+				`<meta property="og:description" content="` + description + `">` +
+				`</head></html>`)
+
+			card, err := parsePreviewCard(target, body, tc.contentType)
+			require.NoError(t, err)
+			require.Equal(t, "Fake-Date-Überfall", card.Title)
+			require.Equal(t, "19-Jähriger über", card.Description)
+		})
+	}
 }
 
 func TestParsePreviewCardYouTubePlayer(t *testing.T) {
@@ -94,7 +125,7 @@ func TestParsePreviewCardYouTubePlayer(t *testing.T) {
 		<meta property="og:image" content="https://i.ytimg.com/vi/Gg-SCpXba64/maxresdefault.jpg">
 	</head></html>`)
 
-	card, err := parsePreviewCard(target, body)
+	card, err := parsePreviewCard(target, body, "")
 	require.NoError(t, err)
 	require.Equal(t, "video", card.Type)
 	require.Equal(t, 480, card.Width)
@@ -129,4 +160,21 @@ func TestYouTubePreviewCardFromOEmbed(t *testing.T) {
 	require.Equal(t, "Danger Dan - Keine Angst", card.Title)
 	require.Equal(t, "https://www.youtube-nocookie.com/embed/Gg-SCpXba64", card.EmbedURL)
 	require.Equal(t, "https://i.ytimg.com/vi/Gg-SCpXba64/hqdefault.jpg", card.Image)
+}
+
+func TestParsePreviewCardUTF8(t *testing.T) {
+	target, err := url.Parse("https://example.org/article")
+	require.NoError(t, err)
+	for name, tc := range map[string]struct{ prefix, contentType string }{
+		"header":               {contentType: "text/html; charset=utf-8"},
+		"sniffed":              {},
+		"BOM overrides header": {prefix: "\xef\xbb\xbf", contentType: "text/html; charset=iso-8859-1"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			card, err := parsePreviewCard(target, []byte(tc.prefix+`<html><head><title>Grüße 日本語 🦋</title><meta name="description" content="Äpfel &amp; Öl"></head></html>`), tc.contentType)
+			require.NoError(t, err)
+			require.Equal(t, "Grüße 日本語 🦋", card.Title)
+			require.Equal(t, "Äpfel & Öl", card.Description)
+		})
+	}
 }

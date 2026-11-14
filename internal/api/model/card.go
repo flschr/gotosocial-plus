@@ -17,6 +17,8 @@
 
 package model
 
+import "encoding/json"
+
 // Card represents a rich preview card that is generated using OpenGraph tags from a URL.
 //
 // swagger:model card
@@ -63,4 +65,28 @@ type Card struct {
 	EmbedURL string `json:"embed_url"`
 	// A hash computed by the BlurHash algorithm, for generating colorful preview thumbnails when media has not been downloaded yet.
 	Blurhash string `json:"blurhash"`
+}
+
+// MarshalJSON implements json.Marshaler. The Mastodon API
+// declares image and blurhash as nullable, and clients like
+// Ivory show a loading placeholder for an empty image string,
+// so empty values are serialized as null instead.
+func (c Card) MarshalJSON() ([]byte, error) {
+	type card Card
+	return json.Marshal(struct {
+		card
+		Image    *string `json:"image"`
+		Blurhash *string `json:"blurhash"`
+	}{
+		card:     card(c),
+		Image:    nullIfEmpty(c.Image),
+		Blurhash: nullIfEmpty(c.Blurhash),
+	})
+}
+
+func nullIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
