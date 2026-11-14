@@ -95,3 +95,32 @@ from editing the wrong account. Users who intentionally want to switch can
 choose **Forget saved Bluesky account** after disconnecting. Forgetting removes
 the binding and all retained mappings; already published Bluesky posts remain
 online and can no longer be managed by GoToSocial.
+
+## Crossposting from selected applications
+
+Under **Publishing settings → Publish posts from**, choose **Selected applications
+only** to restrict new crossposts to explicitly selected publishers. The default
+is **All applications**, including after an upgrade. The automatic publishing
+switch still needs to be enabled.
+
+The list includes applications authorized by your account and applications used
+for your existing posts. Selection uses the application ID, not its display name:
+applications with the same name remain separate. A blog or other automated
+publisher should register its own OAuth application and publish using a user
+access token issued for that application. Sharing an application with a regular
+client also permits that client's posts; GoToSocial does not guess whether a
+post is a blog announcement from its text or links.
+
+An empty selection blocks all new automatic crossposts. Posts without an
+application identity are excluded in selected-applications mode. Existing
+eligibility and visibility checks still apply. The selection is checked again
+before a queued new post is published. It does not delete existing crossposts
+or stop their edits/deletions, and it does not block replies to Bluesky
+conversations written from other clients.
+
+The settings API accepts `crosspost_application_filter` (boolean) and
+`crosspost_application_ids` (an array of application IDs, at most 100) in a JSON
+PATCH to `/api/v1/user/bluesky`. Omitted fields preserve existing settings; an
+explicit empty array clears the selection. IDs are validated against the owning
+account's available or previously selected applications. The GET response
+includes `applications` containing only their IDs and display names.

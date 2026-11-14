@@ -18,11 +18,14 @@
 */
 
 export interface BlueskyConnection {
+	applications: { id: string; name: string }[];
 	connected: boolean;
 	auth_method?: "oauth" | "app_password";
 	did?: string;
 	handle?: string;
 	profile_url?: string;
+	crosspost_application_filter: boolean;
+	crosspost_application_ids: string[];
 	crosspost_public: boolean;
 	show_profile_follow: boolean;
 	configured: boolean;
@@ -37,8 +40,10 @@ export interface BlueskyConnection {
 }
 
 export interface BlueskySettingsUpdate {
-	crosspost_public: boolean;
-	show_profile_follow: boolean;
+	crosspost_application_filter?: boolean;
+	crosspost_application_ids?: string[];
+	crosspost_public?: boolean;
+	show_profile_follow?: boolean;
 }
 
 export interface BlueskyConnectResponse {

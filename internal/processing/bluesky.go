@@ -7,7 +7,9 @@ package processing
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/url"
+	"slices"
 	"time"
 
 	apimodel "code.superseriousbusiness.org/gotosocial/internal/api/model"
@@ -44,6 +46,15 @@ func (p *Processor) BlueskyConnectionGet(ctx context.Context, accountID string) 
 		return nil, gtserror.NewErrorInternalError(err)
 	}
 
+	applications, err := p.state.DB.GetBlueskyApplicationsByAccountID(ctx, accountID)
+	if err != nil {
+		return nil, gtserror.NewErrorInternalError(err)
+	}
+	choices := make([]apimodel.BlueskyApplication, 0, len(applications))
+	for _, app := range applications {
+		choices = append(choices, apimodel.BlueskyApplication{ID: app.ID, Name: app.Name})
+	}
+	ids := append([]string{}, connection.CrosspostApplicationIDs...)
 	health, err := p.state.DB.GetBlueskyHealth(ctx, accountID)
 	if err != nil {
 		return nil, gtserror.NewErrorInternalError(err)
@@ -55,22 +66,25 @@ func (p *Processor) BlueskyConnectionGet(ctx context.Context, accountID string) 
 	}
 	status, statusMessage, needsReconnect := blueskyConnectionStatus(connection, health, config.GetBlueskyOAuthEncryptionKey() != "")
 	return &apimodel.BlueskyConnection{
-		Connected:         connection.Active(),
-		AuthMethod:        connection.AuthMethod(),
-		DID:               connection.DID,
-		Configured:        config.GetBlueskyOAuthEncryptionKey() != "",
-		Status:            status,
-		StatusMessage:     statusMessage,
-		NeedsReconnect:    needsReconnect,
-		Handle:            connection.Handle,
-		ProfileURL:        "https://bsky.app/profile/" + url.PathEscape(connection.DID),
-		CrosspostPublic:   connection.CrosspostPublic,
-		ShowProfileFollow: connection.ShowProfileFollow,
-		PendingDeliveries: health.PendingDeliveries,
-		DeadDeliveries:    health.DeadDeliveries,
-		DeadNotifications: health.DeadNotifications,
-		LastErrorAt:       health.LastErrorAt,
-		LastSyncAt:        connection.LastSyncAt,
+		Connected:                  connection.Active(),
+		AuthMethod:                 connection.AuthMethod(),
+		DID:                        connection.DID,
+		Configured:                 config.GetBlueskyOAuthEncryptionKey() != "",
+		Status:                     status,
+		StatusMessage:              statusMessage,
+		NeedsReconnect:             needsReconnect,
+		Handle:                     connection.Handle,
+		ProfileURL:                 "https://bsky.app/profile/" + url.PathEscape(connection.DID),
+		CrosspostPublic:            connection.CrosspostPublic,
+		CrosspostApplicationFilter: connection.CrosspostApplicationFilter,
+		CrosspostApplicationIDs:    ids,
+		Applications:               choices,
+		ShowProfileFollow:          connection.ShowProfileFollow,
+		PendingDeliveries:          health.PendingDeliveries,
+		DeadDeliveries:             health.DeadDeliveries,
+		DeadNotifications:          health.DeadNotifications,
+		LastErrorAt:                health.LastErrorAt,
+		LastSyncAt:                 connection.LastSyncAt,
 	}, nil
 }
 
@@ -110,6 +124,9 @@ func (p *Processor) BlueskyRetry(ctx context.Context, accountID string) gtserror
 }
 
 func (p *Processor) BlueskySettingsUpdate(ctx context.Context, accountID string, form *apimodel.BlueskySettingsUpdateRequest) (*apimodel.BlueskyConnection, gtserror.WithCode) {
+	// Serialize policy changes with in-flight publications and connection changes.
+	// After this request returns, delivery cannot still use the previous policy.
+	defer bluesky.LockAccount(accountID)()
 	connection, err := p.state.DB.GetBlueskyConnectionByAccountID(ctx, accountID)
 	if errors.Is(err, db.ErrNoEntries) {
 		return nil, gtserror.NewErrorConflict(err, "connect a Bluesky account before changing its settings")
@@ -118,7 +135,38 @@ func (p *Processor) BlueskySettingsUpdate(ctx context.Context, accountID string,
 		return nil, gtserror.NewErrorInternalError(err)
 	}
 
-	columns := make([]string, 0, 2)
+	// Validate the entire selection before mutating settings. IDs belonging only
+	// to other accounts must not be selectable or revealed by this endpoint.
+	var selected []string
+	if form.CrosspostApplicationIDs != nil {
+		if len(*form.CrosspostApplicationIDs) > 100 {
+			return nil, gtserror.NewErrorBadRequest(fmt.Errorf("too many applications"))
+		}
+		applications, err := p.state.DB.GetBlueskyApplicationsByAccountID(ctx, accountID)
+		if err != nil {
+			return nil, gtserror.NewErrorInternalError(err)
+		}
+		for _, appID := range *form.CrosspostApplicationIDs {
+			known := slices.ContainsFunc(applications, func(app *gtsmodel.Application) bool { return app.ID == appID })
+			// Keep previously selected, now unavailable apps removable without silently
+			// broadening the filter or making an unrelated settings save fail.
+			if !known && !slices.Contains(connection.CrosspostApplicationIDs, appID) {
+				return nil, gtserror.NewErrorBadRequest(fmt.Errorf("application is not available for this account"))
+			}
+			if !slices.Contains(selected, appID) {
+				selected = append(selected, appID)
+			}
+		}
+	}
+	columns := make([]string, 0, 4)
+	if form.CrosspostApplicationFilter != nil {
+		connection.CrosspostApplicationFilter = *form.CrosspostApplicationFilter
+		columns = append(columns, "crosspost_application_filter")
+	}
+	if form.CrosspostApplicationIDs != nil {
+		connection.CrosspostApplicationIDs = selected
+		columns = append(columns, "crosspost_application_ids")
+	}
 	if form.CrosspostPublic != nil {
 		if *form.CrosspostPublic && !connection.CrosspostPublic {
 			now := time.Now()

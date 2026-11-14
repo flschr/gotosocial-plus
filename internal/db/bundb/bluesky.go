@@ -191,3 +191,14 @@ func (b *blueskyDB) DeleteBlueskyInteraction(ctx context.Context, id string) err
 	_, err := b.db.NewDelete().Model((*gtsmodel.BlueskyInteraction)(nil)).Where("? = ?", bun.Ident("id"), id).Exec(ctx)
 	return err
 }
+
+// GetBlueskyApplicationsByAccountID exposes application identities, never OAuth secrets.
+// Include authorized apps and apps used for this account's existing posts so
+// publishers remain recognizable after token rotation or revocation.
+func (b *blueskyDB) GetBlueskyApplicationsByAccountID(ctx context.Context, accountID string) ([]*gtsmodel.Application, error) {
+	apps := make([]*gtsmodel.Application, 0)
+	err := b.db.NewSelect().Model(&apps).Column("application.id", "application.name").
+		Where(`"application"."client_id" IN (SELECT "token"."client_id" FROM "tokens" AS "token" JOIN "users" AS "u" ON "u"."id" = "token"."user_id" WHERE "u"."account_id" = ? AND "token"."access" != '') OR "application"."id" IN (SELECT "created_with_application_id" FROM "statuses" WHERE "account_id" = ?)`, accountID, accountID).
+		Order("application.name ASC", "application.id ASC").Scan(ctx)
+	return apps, err
+}

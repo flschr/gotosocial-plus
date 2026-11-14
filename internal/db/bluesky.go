@@ -13,6 +13,7 @@ import (
 
 // Bluesky contains persistence operations for optional Bluesky connections.
 type Bluesky interface {
+	GetBlueskyApplicationsByAccountID(context.Context, string) ([]*gtsmodel.Application, error)
 	GetBlueskyConnectionByAccountID(context.Context, string) (*gtsmodel.BlueskyConnection, error)
 	GetBlueskyConnections(context.Context) ([]*gtsmodel.BlueskyConnection, error)
 	GetBlueskyStatusesChangedBetween(context.Context, string, time.Time, time.Time) ([]*gtsmodel.Status, error)

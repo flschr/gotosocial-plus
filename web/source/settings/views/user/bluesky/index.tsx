@@ -24,6 +24,7 @@ import { Checkbox } from "../../../components/form/inputs";
 import MutationButton from "../../../components/form/mutation-button";
 import { useBoolInput } from "../../../lib/form";
 import useFormSubmit from "../../../lib/form/submit";
+
 import type { BlueskyConnection } from "../../../lib/types/bluesky";
 import {
 	useBlueskyConnectionQuery,
@@ -55,11 +56,28 @@ function BlueskySettingsForm({ connection }: { connection: BlueskyConnection }) 
 		forget, forgetResult, retry, retryResult, connectResult,
 		startConnection, appPasswordResult, startAppPasswordConnection, callbackErrorMessage,
 	} = controller;
+	const initialApplicationIDs = connection.crosspost_application_ids ?? [];
+	const [applicationIDs, setApplicationIDs] = React.useState(initialApplicationIDs);
 	const form = {
 		crosspostPublic: useBoolInput("crosspost_public", { source: connection }),
 		showProfileFollow: useBoolInput("show_profile_follow", { source: connection }),
+		applicationFilter: useBoolInput("crosspost_application_filter", { source: connection }),
+		applicationIDs: {
+			name: "crosspost_application_ids",
+			Name: "",
+			_default: [],
+			value: applicationIDs,
+			hasChanged: () => applicationIDs.length !== initialApplicationIDs.length || initialApplicationIDs.some(id => !applicationIDs.includes(id)),
+		},
 	};
 	const [submitForm, result] = useFormSubmit(form, useUpdateBlueskySettingsMutation());
+	const applicationFilter = form.applicationFilter.value;
+	const applications = [...(connection.applications ?? [])];
+	for (const id of applicationIDs) {
+		if (!applications.some(app => app.id === id)) {
+			applications.push({ id, name: "Unavailable application" });
+		}
+	}
 	const canSubmitAppPassword = connection.configured &&
 		(connection.connected || Boolean(identifier || connection.did || connection.handle)) &&
 		Boolean(appPassword) &&
@@ -94,6 +112,24 @@ function BlueskySettingsForm({ connection }: { connection: BlueskyConnection }) 
 					<div className="bluesky-option">
 						<Checkbox field={form.crosspostPublic} label="Automatically publish public posts to Bluesky" />
 						<small>Replies, mentions, boosts, polls, and non-public posts are not crossposted. Turning this off stops new crossposts. Deleting an original post also removes its Bluesky crosspost; edits may not appear in Bluesky clients.</small>
+					</div>
+					<div className="bluesky-option">
+						<label>Publish posts from
+							<select value={applicationFilter ? "selected" : "all"} onChange={event => form.applicationFilter.setter(event.target.value === "selected")}>
+								<option value="all">All applications</option>
+								<option value="selected">Selected applications only</option>
+							</select>
+						</label>
+						{applicationFilter && <fieldset>
+							<legend>Applications allowed to crosspost</legend>
+							<p>Select your blog publisher or other connected applications. Posts without a matching application stay on the Fediverse. With nothing selected, no new posts are crossposted.</p>
+							{applications.length === 0 && <p>No applications available yet. Authorize your publisher first, then return here.</p>}
+							{applications.map(app => <Checkbox key={app.id}
+								label={applications.filter(other => other.name === app.name).length > 1 ? `${app.name} (${app.id})` : app.name}
+								field={{ value: applicationIDs.includes(app.id), onChange: (event: React.ChangeEvent<HTMLInputElement>) => setApplicationIDs(ids => event.target.checked ? [...ids, app.id] : ids.filter(id => id !== app.id)) }}
+							/>)}
+						</fieldset>}
+						<small>This selection applies to new crossposts. Existing crossposts and replies to Bluesky conversations keep syncing.</small>
 					</div>
 					<div className="bluesky-option">
 						<Checkbox field={form.showProfileFollow} label="Show a ‘Follow on Bluesky’ button on my public profile" />

@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -31,6 +32,7 @@ func EligibleForCrosspost(status *gtsmodel.Status, connection *gtsmodel.BlueskyC
 		connection != nil &&
 		connection.Active() &&
 		connection.CrosspostPublic &&
+		(!connection.CrosspostApplicationFilter || (status.CreatedWithApplicationID != "" && slices.Contains(connection.CrosspostApplicationIDs, status.CreatedWithApplicationID))) &&
 		status.Visibility == gtsmodel.VisibilityPublic &&
 		!status.LocalOnly() &&
 		status.InReplyToID == "" &&

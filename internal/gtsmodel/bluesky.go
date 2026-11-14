@@ -12,27 +12,29 @@ import (
 
 // BlueskyConnection links one local account to one Bluesky identity.
 type BlueskyConnection struct {
-	bun.BaseModel       `bun:"table:bluesky_connections"`
-	ID                  string    `bun:"type:CHAR(26),pk,nullzero,notnull,unique"`
-	CreatedAt           time.Time `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
-	UpdatedAt           time.Time `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
-	AccountID           string    `bun:"type:CHAR(26),nullzero,notnull,unique"`
-	DID                 string    `bun:"did,nullzero,notnull,unique"`
-	Handle              string    `bun:",nullzero,notnull"`
-	PDSURL              string    `bun:"pds_url,nullzero,notnull"`
-	OAuthSessionID      string    `bun:"oauth_session_id,nullzero"`
-	OAuthData           []byte    `bun:"oauth_data,nullzero"`
-	AppPasswordData     []byte    `bun:"app_password_data,nullzero"`
-	NotificationsSeenAt time.Time `bun:"type:timestamptz,nullzero"`
-	LastSyncAt          time.Time `bun:"type:timestamptz,nullzero"`
-	LastSyncError       string    `bun:",nullzero"`
-	LastSyncErrorCode   string    `bun:",nullzero"`
-	SyncClaimedUntil    time.Time `bun:"type:timestamptz,nullzero"`
-	OutboxCheckedAt     time.Time `bun:"type:timestamptz,nullzero"`
-	QuoteBoostCleanedAt time.Time `bun:"type:timestamptz,nullzero"`
-	CrosspostEnabledAt  time.Time `bun:"type:timestamptz,nullzero"`
-	CrosspostPublic     bool      `bun:",notnull,default:false"`
-	ShowProfileFollow   bool      `bun:",notnull,default:true"`
+	bun.BaseModel              `bun:"table:bluesky_connections"`
+	ID                         string    `bun:"type:CHAR(26),pk,nullzero,notnull,unique"`
+	CreatedAt                  time.Time `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
+	UpdatedAt                  time.Time `bun:"type:timestamptz,nullzero,notnull,default:current_timestamp"`
+	AccountID                  string    `bun:"type:CHAR(26),nullzero,notnull,unique"`
+	DID                        string    `bun:"did,nullzero,notnull,unique"`
+	Handle                     string    `bun:",nullzero,notnull"`
+	PDSURL                     string    `bun:"pds_url,nullzero,notnull"`
+	OAuthSessionID             string    `bun:"oauth_session_id,nullzero"`
+	OAuthData                  []byte    `bun:"oauth_data,nullzero"`
+	AppPasswordData            []byte    `bun:"app_password_data,nullzero"`
+	NotificationsSeenAt        time.Time `bun:"type:timestamptz,nullzero"`
+	LastSyncAt                 time.Time `bun:"type:timestamptz,nullzero"`
+	LastSyncError              string    `bun:",nullzero"`
+	LastSyncErrorCode          string    `bun:",nullzero"`
+	SyncClaimedUntil           time.Time `bun:"type:timestamptz,nullzero"`
+	OutboxCheckedAt            time.Time `bun:"type:timestamptz,nullzero"`
+	QuoteBoostCleanedAt        time.Time `bun:"type:timestamptz,nullzero"`
+	CrosspostEnabledAt         time.Time `bun:"type:timestamptz,nullzero"`
+	CrosspostApplicationFilter bool      `bun:",notnull,default:false"`
+	CrosspostApplicationIDs    []string  `bun:"crosspost_application_ids,type:jsonb"`
+	CrosspostPublic            bool      `bun:",notnull,default:false"`
+	ShowProfileFollow          bool      `bun:",notnull,default:true"`
 }
 
 func (b *BlueskyConnection) Active() bool {

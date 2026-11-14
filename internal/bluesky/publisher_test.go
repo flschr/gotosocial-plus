@@ -393,3 +393,27 @@ func TestShouldUpsertMappedStatusMatrix(t *testing.T) {
 	boost.BoostOfID = "boosted-status"
 	require.False(t, ShouldUpsertMappedStatus(&boost, active, true))
 }
+
+func TestCrosspostApplicationSelection(t *testing.T) {
+	connection := &gtsmodel.BlueskyConnection{CrosspostPublic: true, OAuthSessionID: "session", OAuthData: []byte("encrypted")}
+	status := &gtsmodel.Status{Visibility: gtsmodel.VisibilityPublic, CreatedWithApplicationID: "publisher"}
+	status.Flags.SetFederated(true)
+	require.True(t, EligibleForCrosspost(status, connection), "existing accounts allow every app")
+	connection.CrosspostApplicationFilter = true
+	require.False(t, EligibleForCrosspost(status, connection), "empty selection must deny all new posts")
+	connection.CrosspostApplicationIDs = []string{"publisher"}
+	require.True(t, EligibleForCrosspost(status, connection))
+	status.CreatedWithApplicationID = "other-client"
+	require.False(t, EligibleForCrosspost(status, connection))
+	require.False(t, ShouldQueueNewStatus(status, connection, false))
+	require.True(t, ShouldQueueNewStatus(status, connection, true), "Bluesky replies bypass the application filter")
+	require.True(t, ShouldUpsertMappedStatus(status, connection, false), "existing mappings survive a filter change")
+	status.CreatedWithApplicationID = ""
+	require.False(t, EligibleForCrosspost(status, connection), "unknown origin fails closed")
+	connection.CrosspostApplicationFilter = false
+	require.True(t, EligibleForCrosspost(status, connection))
+	connection.CrosspostApplicationFilter = true
+	status.CreatedWithApplicationID = "publisher"
+	status.Visibility = gtsmodel.VisibilityFollowersOnly
+	require.False(t, EligibleForCrosspost(status, connection), "selected app cannot bypass privacy")
+}
