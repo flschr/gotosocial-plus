@@ -15,6 +15,7 @@ import (
 
 	"code.superseriousbusiness.org/gotosocial/internal/bluesky"
 	"code.superseriousbusiness.org/gotosocial/internal/config"
+	"code.superseriousbusiness.org/gotosocial/internal/db"
 	"code.superseriousbusiness.org/gotosocial/internal/gtsmodel"
 	"code.superseriousbusiness.org/gotosocial/internal/httpclient"
 	"code.superseriousbusiness.org/gotosocial/internal/id"
@@ -1153,4 +1154,31 @@ func (suite *BlueskyTestSuite) TestOAuthStoreRejectsPersistenceAfterConnectionDe
 
 func TestBlueskyTestSuite(t *testing.T) {
 	suite.Run(t, new(BlueskyTestSuite))
+}
+
+func (suite *BlueskyTestSuite) TestApplicationFilterDiscardsQueuedNewPost() {
+	ctx := suite.T().Context()
+	account := suite.testAccounts["local_account_1"]
+	status := suite.testStatuses["local_account_1_status_1"]
+	connection := &gtsmodel.BlueskyConnection{
+		ID: id.NewULID(), AccountID: account.ID, DID: "did:plc:app-filter",
+		Handle: "filter.test", PDSURL: "https://pds.example.test",
+		OAuthSessionID: "session", OAuthData: []byte("encrypted"), CrosspostPublic: true,
+	}
+	suite.Require().NoError(suite.db.PutBlueskyConnection(ctx, connection))
+	_, err := bluesky.QueueStatus(ctx, &suite.state, status)
+	suite.Require().NoError(err)
+	// Settings may change while delivery is pending. No authentication or remote
+	// publication should be attempted for a now-excluded application's new post.
+	connection.CrosspostApplicationFilter = true
+	connection.CrosspostApplicationIDs = []string{"another-application"}
+	suite.Require().NoError(suite.db.UpdateBlueskyConnection(ctx, connection, "crosspost_application_filter", "crosspost_application_ids"))
+	claimed, err := suite.db.ClaimDueBlueskyDeliveries(ctx, time.Now().Add(time.Second), time.Now().Add(time.Minute), 1)
+	suite.Require().NoError(err)
+	suite.Require().Len(claimed, 1)
+	suite.Require().NoError(bluesky.ProcessDelivery(ctx, &suite.state, typeutils.NewConverter(&suite.state), claimed[0]))
+	_, err = suite.db.GetBlueskyDeliveryByStatusID(ctx, status.ID)
+	suite.ErrorIs(err, db.ErrNoEntries)
+	_, err = suite.db.GetBlueskyPostByStatusID(ctx, status.ID)
+	suite.ErrorIs(err, db.ErrNoEntries)
 }

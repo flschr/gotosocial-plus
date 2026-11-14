@@ -30,7 +30,6 @@ const extended = gtsApi.injectEndpoints({
 			query: (body) => ({
 				method: "PATCH",
 				url: "/api/v1/user/bluesky",
-				asForm: true,
 				body,
 				discardEmpty: false,
 			}),
