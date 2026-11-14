@@ -40,10 +40,10 @@ export interface BlueskyConnection {
 }
 
 export interface BlueskySettingsUpdate {
-	crosspost_application_filter: boolean;
-	crosspost_application_ids: string[];
-	crosspost_public: boolean;
-	show_profile_follow: boolean;
+	crosspost_application_filter?: boolean;
+	crosspost_application_ids?: string[];
+	crosspost_public?: boolean;
+	show_profile_follow?: boolean;
 }
 
 export interface BlueskyConnectResponse {

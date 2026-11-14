@@ -23,6 +23,7 @@ import { Error as ErrorC } from "../../../components/error";
 import { Checkbox } from "../../../components/form/inputs";
 import MutationButton from "../../../components/form/mutation-button";
 import { useBoolInput } from "../../../lib/form";
+import useFormSubmit from "../../../lib/form/submit";
 
 import type { BlueskyConnection } from "../../../lib/types/bluesky";
 import {
@@ -55,22 +56,22 @@ function BlueskySettingsForm({ connection }: { connection: BlueskyConnection }) 
 		forget, forgetResult, retry, retryResult, connectResult,
 		startConnection, appPasswordResult, startAppPasswordConnection, callbackErrorMessage,
 	} = controller;
+	const initialApplicationIDs = connection.crosspost_application_ids ?? [];
+	const [applicationIDs, setApplicationIDs] = React.useState(initialApplicationIDs);
 	const form = {
 		crosspostPublic: useBoolInput("crosspost_public", { source: connection }),
 		showProfileFollow: useBoolInput("show_profile_follow", { source: connection }),
+		applicationFilter: useBoolInput("crosspost_application_filter", { source: connection }),
+		applicationIDs: {
+			name: "crosspost_application_ids",
+			Name: "",
+			_default: [],
+			value: applicationIDs,
+			hasChanged: () => applicationIDs.length !== initialApplicationIDs.length || initialApplicationIDs.some(id => !applicationIDs.includes(id)),
+		},
 	};
-	const [applicationFilter, setApplicationFilter] = React.useState(connection.crosspost_application_filter);
-	const [applicationIDs, setApplicationIDs] = React.useState(connection.crosspost_application_ids ?? []);
-	const [updateSettings, result] = useUpdateBlueskySettingsMutation();
-	const submitForm = (event: React.FormEvent) => {
-		event.preventDefault();
-		void updateSettings({
-			crosspost_public: Boolean(form.crosspostPublic.value),
-			show_profile_follow: Boolean(form.showProfileFollow.value),
-			crosspost_application_filter: applicationFilter,
-			crosspost_application_ids: applicationIDs,
-		});
-	};
+	const [submitForm, result] = useFormSubmit(form, useUpdateBlueskySettingsMutation());
+	const applicationFilter = form.applicationFilter.value;
 	const applications = [...(connection.applications ?? [])];
 	for (const id of applicationIDs) {
 		if (!applications.some(app => app.id === id)) {
@@ -114,7 +115,7 @@ function BlueskySettingsForm({ connection }: { connection: BlueskyConnection }) 
 					</div>
 					<div className="bluesky-option">
 						<label>Publish posts from
-							<select value={applicationFilter ? "selected" : "all"} onChange={event => setApplicationFilter(event.target.value === "selected")}>
+							<select value={applicationFilter ? "selected" : "all"} onChange={event => form.applicationFilter.setter(event.target.value === "selected")}>
 								<option value="all">All applications</option>
 								<option value="selected">Selected applications only</option>
 							</select>

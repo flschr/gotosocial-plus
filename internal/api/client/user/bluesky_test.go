@@ -5,12 +5,17 @@
 package user_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	userapi "code.superseriousbusiness.org/gotosocial/internal/api/client/user"
+	apimodel "code.superseriousbusiness.org/gotosocial/internal/api/model"
+	"code.superseriousbusiness.org/gotosocial/internal/gtsmodel"
+	"code.superseriousbusiness.org/gotosocial/internal/id"
+	"code.superseriousbusiness.org/gotosocial/internal/oauth"
 	"code.superseriousbusiness.org/gotosocial/testrig"
 	"github.com/stretchr/testify/suite"
 )
@@ -52,4 +57,44 @@ func (suite *BlueskyHandlerTestSuite) TestAppPasswordRequiresBoundedSecret() {
 
 func TestBlueskyHandlerTestSuite(t *testing.T) {
 	suite.Run(t, new(BlueskyHandlerTestSuite))
+}
+
+func (suite *BlueskyHandlerTestSuite) TestApplicationSelectionJSONPatch() {
+	accountID := suite.testAccounts["local_account_1"].ID
+	suite.Require().NoError(suite.db.PutBlueskyConnection(suite.T().Context(), &gtsmodel.BlueskyConnection{
+		ID: id.NewULID(), AccountID: accountID, DID: "did:plc:settings-api", Handle: "publisher.example", PDSURL: "https://pds.example", CrosspostPublic: true,
+	}))
+	appID := suite.testApplications["application_1"].ID
+	patch := func(body string, expectedCode int) apimodel.BlueskyConnection {
+		recorder := httptest.NewRecorder()
+		ctx, _ := testrig.CreateGinTestContext(recorder, nil)
+		ctx.Set(oauth.SessionAuthorizedApplication, suite.testApplications["application_1"])
+		ctx.Set(oauth.SessionAuthorizedToken, oauth.DBTokenToToken(suite.testTokens["local_account_1"]))
+		ctx.Set(oauth.SessionAuthorizedUser, suite.testUsers["local_account_1"])
+		ctx.Set(oauth.SessionAuthorizedAccount, suite.testAccounts["local_account_1"])
+		ctx.Request = httptest.NewRequest(http.MethodPatch, "http://localhost:8080/api/v1/user/bluesky", strings.NewReader(body))
+		ctx.Request.Header.Set("Content-Type", "application/json")
+		ctx.Request.Header.Set("Accept", "application/json")
+		suite.userModule.BlueskyPATCHHandler(ctx)
+		suite.Require().Equal(expectedCode, recorder.Code, recorder.Body.String())
+		var result apimodel.BlueskyConnection
+		if expectedCode == http.StatusOK {
+			suite.Require().NoError(json.Unmarshal(recorder.Body.Bytes(), &result))
+		}
+		return result
+	}
+	result := patch(`{"crosspost_application_filter":true,"crosspost_application_ids":["`+appID+`"]}`, http.StatusOK)
+	suite.True(result.CrosspostApplicationFilter)
+	suite.Equal([]string{appID}, result.CrosspostApplicationIDs)
+	result = patch(`{"show_profile_follow":true}`, http.StatusOK)
+	suite.True(result.CrosspostApplicationFilter)
+	suite.Equal([]string{appID}, result.CrosspostApplicationIDs)
+	result = patch(`{"crosspost_application_ids":[]}`, http.StatusOK)
+	suite.True(result.CrosspostApplicationFilter)
+	suite.Empty(result.CrosspostApplicationIDs)
+	patch(`{"crosspost_public":false,"crosspost_application_ids":["`+suite.testApplications["application_2"].ID+`"]}`, http.StatusBadRequest)
+	stored, err := suite.db.GetBlueskyConnectionByAccountID(suite.T().Context(), accountID)
+	suite.Require().NoError(err)
+	suite.True(stored.CrosspostPublic)
+	suite.True(stored.CrosspostApplicationFilter)
 }

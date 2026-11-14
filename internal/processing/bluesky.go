@@ -124,6 +124,9 @@ func (p *Processor) BlueskyRetry(ctx context.Context, accountID string) gtserror
 }
 
 func (p *Processor) BlueskySettingsUpdate(ctx context.Context, accountID string, form *apimodel.BlueskySettingsUpdateRequest) (*apimodel.BlueskyConnection, gtserror.WithCode) {
+	// Serialize policy changes with in-flight publications and connection changes.
+	// After this request returns, delivery cannot still use the previous policy.
+	defer bluesky.LockAccount(accountID)()
 	connection, err := p.state.DB.GetBlueskyConnectionByAccountID(ctx, accountID)
 	if errors.Is(err, db.ErrNoEntries) {
 		return nil, gtserror.NewErrorConflict(err, "connect a Bluesky account before changing its settings")

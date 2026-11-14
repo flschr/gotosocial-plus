@@ -605,6 +605,7 @@ func (suite *BlueskyTestSuite) TestActivateAppPasswordReplacesOAuthAndPreservesS
 		Handle: "old.example", PDSURL: "https://old-pds.example.test",
 		OAuthSessionID: "oauth-session", OAuthData: []byte("oauth-data"),
 		CrosspostPublic: true, ShowProfileFollow: false,
+		CrosspostApplicationFilter: true, CrosspostApplicationIDs: []string{"publisher"},
 		LastSyncError: "expired", LastSyncErrorCode: bluesky.ErrorCodeAuth,
 	}
 	suite.Require().NoError(suite.db.PutBlueskyConnection(ctx, existing))
@@ -621,6 +622,8 @@ func (suite *BlueskyTestSuite) TestActivateAppPasswordReplacesOAuthAndPreservesS
 	suite.Empty(activated.OAuthSessionID)
 	suite.Empty(activated.OAuthData)
 	suite.True(activated.CrosspostPublic)
+	suite.True(activated.CrosspostApplicationFilter)
+	suite.Equal([]string{"publisher"}, activated.CrosspostApplicationIDs)
 	suite.False(activated.ShowProfileFollow)
 	suite.Empty(activated.LastSyncError)
 	suite.Empty(activated.LastSyncErrorCode)
@@ -890,6 +893,7 @@ func (suite *BlueskyTestSuite) TestDisconnectCleanupPreservesPostMappingsAndRese
 		Handle: "preserve.test", PDSURL: "https://pds.example.test",
 		OAuthSessionID: "session", OAuthData: []byte("encrypted"), AppPasswordData: []byte("encrypted-app-password"),
 		NotificationsSeenAt: time.Now().Add(-time.Hour), CrosspostPublic: true, ShowProfileFollow: false,
+		CrosspostApplicationFilter: true, CrosspostApplicationIDs: []string{"publisher"},
 	}
 	suite.Require().NoError(suite.db.PutBlueskyConnection(ctx, connection))
 	connection.ShowProfileFollow = false
@@ -947,6 +951,8 @@ func (suite *BlueskyTestSuite) TestDisconnectCleanupPreservesPostMappingsAndRese
 	suite.Empty(preservedConnection.AppPasswordData)
 	suite.Equal(connection.NotificationsSeenAt.Unix(), preservedConnection.NotificationsSeenAt.Unix())
 	suite.True(preservedConnection.CrosspostPublic)
+	suite.True(preservedConnection.CrosspostApplicationFilter)
+	suite.Equal([]string{"publisher"}, preservedConnection.CrosspostApplicationIDs)
 	suite.False(preservedConnection.ShowProfileFollow)
 	preserved, err := suite.db.GetBlueskyPostByStatusID(ctx, status.ID)
 	suite.Require().NoError(err)

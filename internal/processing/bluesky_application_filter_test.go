@@ -6,8 +6,10 @@ package processing_test
 
 import (
 	"testing"
+	"time"
 
 	apimodel "code.superseriousbusiness.org/gotosocial/internal/api/model"
+	"code.superseriousbusiness.org/gotosocial/internal/bluesky"
 	"code.superseriousbusiness.org/gotosocial/internal/gtsmodel"
 	"code.superseriousbusiness.org/gotosocial/internal/id"
 	"github.com/stretchr/testify/suite"
@@ -53,4 +55,52 @@ func (s *BlueskyApplicationFilterSuite) TestSettings() {
 
 func TestBlueskyApplicationFilterSuite(t *testing.T) {
 	suite.Run(t, new(BlueskyApplicationFilterSuite))
+}
+
+func (s *BlueskyApplicationFilterSuite) TestSettingsWaitForAccountSync() {
+	ctx := s.T().Context()
+	accountID := s.testAccounts["local_account_1"].ID
+	connection := &gtsmodel.BlueskyConnection{ID: id.NewULID(), AccountID: accountID, DID: "did:plc:serialized-settings", Handle: "filter.example", PDSURL: "https://pds.example"}
+	s.Require().NoError(s.db.PutBlueskyConnection(ctx, connection))
+	// Delivery owns this same lock until its remote write and mapping finish.
+	// A settings response must not claim the new filter is saved before that
+	// already-started publication has finished.
+	unlock := bluesky.LockAccount(accountID)
+	locked := true
+	defer func() {
+		if locked {
+			unlock()
+		}
+	}()
+	finished := make(chan error, 1)
+	started := make(chan struct{})
+	enabled := true
+	go func() {
+		close(started)
+		_, err := s.processor.BlueskySettingsUpdate(ctx, accountID, &apimodel.BlueskySettingsUpdateRequest{CrosspostApplicationFilter: &enabled})
+		if err != nil {
+			finished <- err
+			return
+		}
+		finished <- nil
+	}()
+	<-started
+	select {
+	case err := <-finished:
+		s.Require().NoError(err)
+		s.Fail("settings update finished while account sync still held the publishing lock")
+		return
+	case <-time.After(100 * time.Millisecond):
+	}
+	unlock()
+	locked = false
+	select {
+	case err := <-finished:
+		s.Require().NoError(err)
+	case <-time.After(5 * time.Second):
+		s.FailNow("settings update did not complete after publication finished")
+	}
+	stored, err := s.db.GetBlueskyConnectionByAccountID(ctx, accountID)
+	s.Require().NoError(err)
+	s.True(stored.CrosspostApplicationFilter)
 }
