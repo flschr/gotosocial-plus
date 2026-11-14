@@ -25,7 +25,9 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"testing"
+	"time"
 
+	"code.superseriousbusiness.org/gotosocial/internal/gtscontext"
 	"code.superseriousbusiness.org/gotosocial/internal/httpclient"
 )
 
@@ -113,5 +115,35 @@ func TestHTTPClientPrivateIP(t *testing.T) {
 		if !errors.Is(err, httpclient.ErrReservedAddr) {
 			t.Errorf("dialing private address did not return expected error: %v", err)
 		}
+	}
+}
+
+func TestHTTPClientPreservesRetryAfterOnFastFail(t *testing.T) {
+	client := httpclient.New(httpclient.Config{
+		AllowRanges: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/8")},
+	})
+
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
+		rw.Header().Set("Retry-After", "6034")
+		rw.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+
+	ctx := gtscontext.SetFastFail(t.Context())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = client.Do(req)
+	if err == nil {
+		t.Fatal("expected 429 response error")
+	}
+	after, ok := httpclient.RetryAfter(err)
+	if !ok {
+		t.Fatalf("expected Retry-After metadata in %v", err)
+	}
+	if after != 6034*time.Second {
+		t.Fatalf("unexpected Retry-After: %s", after)
 	}
 }

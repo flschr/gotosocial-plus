@@ -7,12 +7,20 @@ package typeutils
 import (
 	"net/url"
 	"testing"
+	"time"
 
 	"code.superseriousbusiness.org/gotosocial/internal/config"
 	"code.superseriousbusiness.org/gotosocial/internal/gtsmodel"
 	"code.superseriousbusiness.org/gotosocial/internal/state"
 	"github.com/stretchr/testify/require"
 )
+
+func TestPreviewCardMissTTLRespectsRetryAfter(t *testing.T) {
+	require.Equal(t, previewCardMissTTL, previewCardMissTTLForRetryAfter(0))
+	require.Equal(t, previewCardMissTTL, previewCardMissTTLForRetryAfter(10*time.Minute))
+	require.Equal(t, 100*time.Minute, previewCardMissTTLForRetryAfter(100*time.Minute))
+	require.Equal(t, previewCardTTL, previewCardMissTTLForRetryAfter(48*time.Hour))
+}
 
 func TestPreviewCardSkippedForBlueskyInteraction(t *testing.T) {
 	config.SetStatusesPreviewCards(true)
