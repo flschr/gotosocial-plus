@@ -25,8 +25,9 @@ const (
 // ShouldUpsertMappedStatus decides how an existing remote mapping should
 // follow a local edit. A temporarily disconnected account keeps eligible
 // upserts queued; disconnecting must never turn an edit into a deletion.
-func ShouldUpsertMappedStatus(status *gtsmodel.Status, _ *gtsmodel.BlueskyConnection, isReply bool) bool {
-	return EligibleForExistingMapping(status, isReply)
+func ShouldUpsertMappedStatus(status *gtsmodel.Status, connection *gtsmodel.BlueskyConnection, isReply bool) bool {
+	return EligibleForExistingMapping(status, isReply) &&
+		(!isReply || connection == nil || applicationFilterAllows(status, connection))
 }
 
 func QueueStatus(ctx context.Context, state *state.State, status *gtsmodel.Status) (*gtsmodel.BlueskyDelivery, error) {
@@ -105,6 +106,15 @@ func ProcessDelivery(ctx context.Context, state *state.State, converter *typeuti
 		}
 	} else if replyErr != nil {
 		return recordDeliveryFailure(ctx, state, delivery, replyErr)
+	}
+	// Settings may change after a reply was queued. Recheck the application
+	// boundary immediately before the first remote write; existing mappings
+	// retain their separate edit/delete lifecycle below.
+	if _, mappingErr := state.DB.GetBlueskyPostByStatusID(ctx, status.ID); errors.Is(mappingErr, db.ErrNoEntries) &&
+		!ShouldQueueNewStatus(status, connection, replyTarget != nil) {
+		return completeDelivery(ctx, state, delivery)
+	} else if mappingErr != nil && !errors.Is(mappingErr, db.ErrNoEntries) {
+		return recordDeliveryFailure(ctx, state, delivery, mappingErr)
 	}
 	apiStatus, err := converter.StatusToAPIStatus(ctx, status, status.Account)
 	if err == nil {

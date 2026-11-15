@@ -29,15 +29,24 @@ const (
 
 func EligibleForCrosspost(status *gtsmodel.Status, connection *gtsmodel.BlueskyConnection) bool {
 	return EligibleForBlueskyStatus(status) &&
-		connection != nil &&
-		connection.Active() &&
-		connection.CrosspostPublic &&
-		(!connection.CrosspostApplicationFilter || (status.CreatedWithApplicationID != "" && slices.Contains(connection.CrosspostApplicationIDs, status.CreatedWithApplicationID))) &&
+		connectionAllowsCrosspost(status, connection) &&
 		status.Visibility == gtsmodel.VisibilityPublic &&
 		!status.LocalOnly() &&
 		status.InReplyToID == "" &&
 		status.PollID == "" &&
 		len(status.MentionIDs) == 0
+}
+
+func connectionAllowsCrosspost(status *gtsmodel.Status, connection *gtsmodel.BlueskyConnection) bool {
+	return connection != nil &&
+		connection.Active() &&
+		connection.CrosspostPublic &&
+		applicationFilterAllows(status, connection)
+}
+
+func applicationFilterAllows(status *gtsmodel.Status, connection *gtsmodel.BlueskyConnection) bool {
+	return connection != nil &&
+		(!connection.CrosspostApplicationFilter || (status.CreatedWithApplicationID != "" && slices.Contains(connection.CrosspostApplicationIDs, status.CreatedWithApplicationID)))
 }
 
 // EligibleForBlueskyStatus rejects ActivityPub status forms that cannot be
@@ -47,7 +56,9 @@ func EligibleForBlueskyStatus(status *gtsmodel.Status) bool {
 }
 
 func ShouldQueueNewStatus(status *gtsmodel.Status, connection *gtsmodel.BlueskyConnection, isReply bool) bool {
-	return EligibleForBlueskyStatus(status) && (isReply || EligibleForCrosspost(status, connection))
+	return EligibleForBlueskyStatus(status) &&
+		connectionAllowsCrosspost(status, connection) &&
+		(isReply || EligibleForCrosspost(status, connection))
 }
 
 func PublishStatus(ctx context.Context, state *state.State, status *gtsmodel.Status, card *apimodel.Card) error {
