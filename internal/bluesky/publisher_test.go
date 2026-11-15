@@ -406,14 +406,18 @@ func TestCrosspostApplicationSelection(t *testing.T) {
 	status.CreatedWithApplicationID = "other-client"
 	require.False(t, EligibleForCrosspost(status, connection))
 	require.False(t, ShouldQueueNewStatus(status, connection, false))
-	require.True(t, ShouldQueueNewStatus(status, connection, true), "Bluesky replies bypass the application filter")
+	require.False(t, ShouldQueueNewStatus(status, connection, true), "replies must not bypass the application filter")
+	require.False(t, ShouldUpsertMappedStatus(status, connection, true), "a filtered reply must not be recreated after a remote deletion")
 	require.True(t, ShouldUpsertMappedStatus(status, connection, false), "existing mappings survive a filter change")
 	status.CreatedWithApplicationID = ""
 	require.False(t, EligibleForCrosspost(status, connection), "unknown origin fails closed")
 	connection.CrosspostApplicationFilter = false
 	require.True(t, EligibleForCrosspost(status, connection))
+	require.True(t, ShouldQueueNewStatus(status, connection, true), "accounts without an application filter retain reply publishing")
 	connection.CrosspostApplicationFilter = true
 	status.CreatedWithApplicationID = "publisher"
+	require.True(t, ShouldQueueNewStatus(status, connection, true), "a selected application may still reply")
+	require.True(t, ShouldUpsertMappedStatus(status, connection, true))
 	status.Visibility = gtsmodel.VisibilityFollowersOnly
 	require.False(t, EligibleForCrosspost(status, connection), "selected app cannot bypass privacy")
 }

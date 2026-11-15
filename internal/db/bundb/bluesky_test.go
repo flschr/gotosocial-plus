@@ -7,6 +7,7 @@ package bundb_test
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -1183,6 +1184,74 @@ func (suite *BlueskyTestSuite) TestApplicationFilterDiscardsQueuedNewPost() {
 	suite.Require().NoError(err)
 	suite.Require().Len(claimed, 1)
 	suite.Require().NoError(bluesky.ProcessDelivery(ctx, &suite.state, typeutils.NewConverter(&suite.state), claimed[0]))
+	_, err = suite.db.GetBlueskyDeliveryByStatusID(ctx, status.ID)
+	suite.ErrorIs(err, db.ErrNoEntries)
+	_, err = suite.db.GetBlueskyPostByStatusID(ctx, status.ID)
+	suite.ErrorIs(err, db.ErrNoEntries)
+}
+
+func (suite *BlueskyTestSuite) TestApplicationFilterDeletesQueuedMappedReply() {
+	previousKey := config.GetBlueskyOAuthEncryptionKey()
+	defer config.SetBlueskyOAuthEncryptionKey(previousKey)
+	config.SetBlueskyOAuthEncryptionKey(base64.StdEncoding.EncodeToString(make([]byte, 32)))
+	previousHTTPClient := suite.state.HTTPClient
+	defer func() { suite.state.HTTPClient = previousHTTPClient }()
+	suite.state.HTTPClient = httpclient.New(httpclient.Config{
+		AllowRanges: []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8")},
+		Timeout:     time.Second,
+	})
+
+	accessToken := "header." + base64.RawURLEncoding.EncodeToString([]byte(`{"scope":"com.atproto.appPass"}`)) + ".signature"
+	deletedCollections := make([]string, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/xrpc/com.atproto.server.createSession":
+			_, _ = response.Write([]byte(`{"accessJwt":"` + accessToken + `","refreshJwt":"filter-refresh","did":"did:plc:filtered-reply"}`))
+		case "/xrpc/com.atproto.repo.deleteRecord":
+			var body struct {
+				Collection string `json:"collection"`
+			}
+			suite.Require().NoError(json.NewDecoder(request.Body).Decode(&body))
+			deletedCollections = append(deletedCollections, body.Collection)
+			_, _ = response.Write([]byte(`{}`))
+		default:
+			http.NotFound(response, request)
+		}
+	}))
+	defer server.Close()
+
+	ctx := suite.T().Context()
+	account := suite.testAccounts["local_account_1"]
+	status := suite.testStatuses["local_account_1_status_1"]
+	appPasswordData, err := bluesky.CreateAppPasswordData(
+		ctx, &suite.state, account.ID, server.URL,
+		"did:plc:filtered-reply", "test-app-password",
+	)
+	suite.Require().NoError(err)
+	connection := &gtsmodel.BlueskyConnection{
+		ID: id.NewULID(), AccountID: account.ID, DID: "did:plc:filtered-reply",
+		Handle: "filtered-reply.test", PDSURL: server.URL,
+		AppPasswordData: appPasswordData, CrosspostPublic: true,
+		CrosspostApplicationFilter: true, CrosspostApplicationIDs: []string{"selected-blog-app"},
+	}
+	suite.Require().NoError(suite.db.PutBlueskyConnection(ctx, connection))
+	post := &gtsmodel.BlueskyPost{
+		ID: id.NewULID(), ConnectionID: connection.ID, AccountID: account.ID, StatusID: status.ID,
+		URI: "at://did:plc:filtered-reply/app.bsky.feed.post/reply", CID: "reply-cid",
+		RootURI: "at://did:plc:filtered-reply/app.bsky.feed.post/root", RootCID: "root-cid",
+		ParentURI: "at://did:plc:filtered-reply/app.bsky.feed.post/root", ParentCID: "root-cid",
+		URL: "https://bsky.app/profile/did:plc:filtered-reply/post/reply",
+	}
+	suite.Require().NoError(suite.db.PutBlueskyPost(ctx, post))
+	_, err = bluesky.QueueStatus(ctx, &suite.state, status)
+	suite.Require().NoError(err)
+	claimed, err := suite.db.ClaimDueBlueskyDeliveries(ctx, time.Now().Add(time.Second), time.Now().Add(time.Minute), 1)
+	suite.Require().NoError(err)
+	suite.Require().Len(claimed, 1)
+
+	suite.Require().NoError(bluesky.ProcessDelivery(ctx, &suite.state, typeutils.NewConverter(&suite.state), claimed[0]))
+	suite.ElementsMatch([]string{"app.bsky.feed.threadgate", "app.bsky.feed.post"}, deletedCollections)
 	_, err = suite.db.GetBlueskyDeliveryByStatusID(ctx, status.ID)
 	suite.ErrorIs(err, db.ErrNoEntries)
 	_, err = suite.db.GetBlueskyPostByStatusID(ctx, status.ID)
