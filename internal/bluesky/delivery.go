@@ -97,24 +97,25 @@ func ProcessDelivery(ctx context.Context, state *state.State, converter *typeuti
 		return completeDelivery(ctx, state, delivery)
 	}
 	replyTarget, replyErr := replyTargetForStatus(ctx, state, status)
-	if errors.Is(replyErr, db.ErrNoEntries) {
-		if mapping, mappingErr := state.DB.GetBlueskyPostByStatusID(ctx, status.ID); mappingErr == nil && !ShouldUpsertMappedStatus(status, connection, false) {
-			if err := deleteStatus(ctx, state, mapping.StatusID, false, false); err != nil {
-				return recordDeliveryFailure(ctx, state, delivery, err)
-			}
-			return completeDelivery(ctx, state, delivery)
-		}
-	} else if replyErr != nil {
+	if replyErr != nil && !errors.Is(replyErr, db.ErrNoEntries) {
 		return recordDeliveryFailure(ctx, state, delivery, replyErr)
 	}
-	// Settings may change after a reply was queued. Recheck the application
-	// boundary immediately before the first remote write; existing mappings
-	// retain their separate edit/delete lifecycle below.
-	if _, mappingErr := state.DB.GetBlueskyPostByStatusID(ctx, status.ID); errors.Is(mappingErr, db.ErrNoEntries) &&
-		!ShouldQueueNewStatus(status, connection, replyTarget != nil) {
-		return completeDelivery(ctx, state, delivery)
-	} else if mappingErr != nil && !errors.Is(mappingErr, db.ErrNoEntries) {
+	isReply := replyErr == nil
+	mapping, mappingErr := state.DB.GetBlueskyPostByStatusID(ctx, status.ID)
+	if mappingErr != nil && !errors.Is(mappingErr, db.ErrNoEntries) {
 		return recordDeliveryFailure(ctx, state, delivery, mappingErr)
+	}
+	// Settings may change after any upsert was queued. Re-evaluate both new
+	// posts and existing mappings under the current policy while the account
+	// lock is held, immediately before the first remote write.
+	if errors.Is(mappingErr, db.ErrNoEntries) && !ShouldQueueNewStatus(status, connection, isReply) {
+		return completeDelivery(ctx, state, delivery)
+	}
+	if mappingErr == nil && !ShouldUpsertMappedStatus(status, connection, isReply) {
+		if err := deleteStatus(ctx, state, mapping.StatusID, false, false); err != nil {
+			return recordDeliveryFailure(ctx, state, delivery, err)
+		}
+		return completeDelivery(ctx, state, delivery)
 	}
 	apiStatus, err := converter.StatusToAPIStatus(ctx, status, status.Account)
 	if err == nil {

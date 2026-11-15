@@ -30,7 +30,11 @@ const (
 func EligibleForCrosspost(status *gtsmodel.Status, connection *gtsmodel.BlueskyConnection) bool {
 	return EligibleForBlueskyStatus(status) &&
 		connectionAllowsCrosspost(status, connection) &&
-		status.Visibility == gtsmodel.VisibilityPublic &&
+		eligibleForRootCrosspost(status)
+}
+
+func eligibleForRootCrosspost(status *gtsmodel.Status) bool {
+	return status.Visibility == gtsmodel.VisibilityPublic &&
 		!status.LocalOnly() &&
 		status.InReplyToID == "" &&
 		status.PollID == "" &&
@@ -58,7 +62,7 @@ func EligibleForBlueskyStatus(status *gtsmodel.Status) bool {
 func ShouldQueueNewStatus(status *gtsmodel.Status, connection *gtsmodel.BlueskyConnection, isReply bool) bool {
 	return EligibleForBlueskyStatus(status) &&
 		connectionAllowsCrosspost(status, connection) &&
-		(isReply || EligibleForCrosspost(status, connection))
+		(isReply || eligibleForRootCrosspost(status))
 }
 
 func PublishStatus(ctx context.Context, state *state.State, status *gtsmodel.Status, card *apimodel.Card) error {
@@ -82,10 +86,11 @@ func publishStatus(ctx context.Context, state *state.State, status *gtsmodel.Sta
 	if existingErr != nil && !errors.Is(existingErr, db.ErrNoEntries) {
 		return existingErr
 	}
-	if interaction == nil && existingPost == nil && !EligibleForCrosspost(status, connection) {
+	isReply := interaction != nil
+	if existingPost == nil && !ShouldQueueNewStatus(status, connection, isReply) {
 		return nil
 	}
-	if interaction == nil && existingPost != nil && !ShouldUpsertMappedStatus(status, connection, false) {
+	if existingPost != nil && !ShouldUpsertMappedStatus(status, connection, isReply) {
 		return nil
 	}
 	rkey, err := recordKeyForStatusID(status.ID)
